@@ -1,0 +1,193 @@
+# ============================================================
+# Python
+# ============================================================
+
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Python packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+.env
+.python-version
+
+
+# ============================================================
+# Jupyter / JupyterLab
+# ============================================================
+
+.ipynb_checkpoints/
+.jupyter/
+*.ipynb_checkpoints
+
+# Jupyter temporary files
+*.tmp
+
+
+# ============================================================
+# AWS SageMaker
+# ============================================================
+
+# SageMaker local/config files
+.sagemaker/
+.sagemaker-code-config
+
+# SageMaker Studio temporary/runtime files
+*.sagemaker
+**/.sagemaker/
+
+# SageMaker processing/training outputs
+output/
+outputs/
+processing_output/
+training_output/
+model_output/
+
+
+# ============================================================
+# Machine Learning Artifacts
+# ============================================================
+
+# Trained models
+models/
+model/
+checkpoints/
+artifacts/
+
+# Common model formats
+*.pkl
+*.pickle
+*.joblib
+*.h5
+*.hdf5
+*.keras
+*.pt
+*.pth
+*.onnx
+*.safetensors
+*.ckpt
+*.bin
+
+# TensorFlow / PyTorch logs
+logs/
+runs/
+wandb/
+
+
+# ============================================================
+# Datasets
+# ============================================================
+
+# Local datasets
+data/
+dataset/
+datasets/
+
+# Large/common dataset formats
+*.csv
+*.tsv
+*.parquet
+*.feather
+*.jsonl
+
+# Archives containing datasets
+*.zip
+*.tar
+*.tar.gz
+*.gz
+
+
+# ============================================================
+# Secrets / Credentials
+# ============================================================
+
+.env
+.env.*
+!.env.example
+
+*.pem
+*.key
+
+# AWS credentials/configuration
+.aws/
+aws_credentials
+credentials
+
+
+# ============================================================
+# Logs
+# ============================================================
+
+*.log
+logs/
+log/
+
+
+# ============================================================
+# OS Files
+# ============================================================
+
+.DS_Store
+Thumbs.db
+desktop.ini
+
+
+# ============================================================
+# IDE / Editor
+# ============================================================
+
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+
+# ============================================================
+# Temporary / Cache
+# ============================================================
+
+.cache/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.bak
+*.tmp
+*.temp
+
+
+# ============================================================
+# ML experiment outputs
+# ============================================================
+
+experiments/
+predictions/
+evaluation_results/
+tensorboard/
+mlruns/
+
+
+# ============================================================
+# Large generated files
+# ============================================================
+
+*.parquet
+*.feather
+*.npy
+*.npz
+*.tfrecord
+*.pdf
+    

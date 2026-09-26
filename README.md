@@ -84,66 +84,73 @@ s3://<your-bucket-name>/
 
 ---
 
-## 3. Team Division & Responsibilities
+## 3. Pipeline Stages & Notebooks
 
-| Sub-Team | Members | Primary Responsibilities | Milestone Deadlines |
-|---|---|---|---|
-| **Team A** (Data & Features) | **Shubham (Lead)**<br>Data Partner | • Multilingual cleaning (Devanagari, French, legal suffixes)<br>• Country-partitioned blocking (inverted index)<br>• RapidFuzz similarity feature extraction<br>• Central S3 export in Parquet format | **Sept 26, 01:00 PM:** 50k Sample to S3<br>**Sept 26, 10:00 PM:** Full Parquets to S3 |
-| **Team B** (Modeling & Eval) | Model Specialist<br>MLOps Engineer | • LightGBM training with `scale_pos_weight`<br>• Precision-heavy Macro $F_{0.5}$ decision threshold sweep<br>• Singleton handling (empty string = 1.0 score)<br>• Format checking via `validate_submission.py` | **Sept 26, 03:00 PM:** Day 1 Baseline TSV<br>**Sept 27, 10:00 PM:** Final Verified ZIP |
+The pipeline is organized in sequential stages within the `notebooks/` directory:
+
+| Notebook | Purpose | Input | Output |
+| :--- | :--- | :--- | :--- |
+| [`00_s3_setup_test.ipynb`](file:///home/shubham/Projects/Amazon%20ML%20Hackathon/notebooks/00_s3_setup_test.ipynb) | AWS S3 connectivity & integrity checks | S3 bucket credentials | Verified S3 access |
+| [`01_eda_multilingual.ipynb`](file:///home/shubham/Projects/Amazon%20ML%20Hackathon/notebooks/01_eda_multilingual.ipynb) | Multilingual exploratory data analysis | Raw TSVs | EDA insights & distributions |
+| [`02_train_lightgbm.ipynb`](file:///home/shubham/Projects/Amazon%20ML%20Hackathon/notebooks/02_train_lightgbm.ipynb) | Ground-truth anchored feature store & LightGBM training | Cleaned pairs | `lgbm_model_latest.pkl` |
+| [`03_threshold_tuning.ipynb`](file:///home/shubham/Projects/Amazon%20ML%20Hackathon/notebooks/03_threshold_tuning.ipynb) | Macro $F_{0.5}$ decision threshold calibration sweep | Val predictions | Optimal threshold (0.74) |
+| [`04_submission.ipynb`](file:///home/shubham/Projects/Amazon%20ML%20Hackathon/notebooks/04_submission.ipynb) | Test inference & submission generation | `test_source*.tsv` | `matching_results.tsv`, `candidate_pairs.tsv` |
 
 ---
 
-## 4. Quickstart Guide (Google Colab & S3)
+## 4. Source Code Modules (`src/`)
 
-### 1. Open Notebooks via Colab GitHub Integration
-Our team uses Colab's native GitHub UI (**Zero terminal commands required**):
-1. In Colab: **File $\rightarrow$ Open notebook $\rightarrow$ GitHub tab**.
-2. Select repository `ShubhamJain17r/Amazon-ML-Hackathon`.
-3. Open your notebook in `notebooks/<YourName>/`.
-4. When finished, click **File $\rightarrow$ Save a copy in GitHub** to commit directly to `main`!
+All reusable production modules are located in `src/`:
+- [`src/normalization.py`](file:///home/shubham/Projects/Amazon%20ML%20Hackathon/src/normalization.py): High-performance multilingual text cleaner, legal suffix canonicalization (`pvt ltd`, `gmbh`, `sarl`, etc.), and Unicode normalizer (0.0065 ms/record).
+- [`src/blocking.py`](file:///home/shubham/Projects/Amazon%20ML%20Hackathon/src/blocking.py): Country-partitioned inverted index candidate generator with token-frequency ranking and dynamic posting caps.
+- [`src/features.py`](file:///home/shubham/Projects/Amazon%20ML%20Hackathon/src/features.py): RapidFuzz C-accelerated similarity feature extractor (Token Sort Ratio, Partial Ratio, Levenshtein, Jaro-Winkler, Prefix Overlap, Address Jaccard).
 
-### 2. AWS S3 Credentials Configuration
-Store your AWS credentials in Colab's left sidebar (**Secrets / Key icon**):
-- `AWS_ACCESS_KEY_ID`
-- `AWS_SECRET_ACCESS_KEY`
-- `AWS_DEFAULT_REGION` (`us-east-1`)
-- `S3_BUCKET_NAME`
+---
 
-### 3. Verify S3 Connection in Colab
-```python
-import s3fs
-fs = s3fs.S3FileSystem()
-print("S3 connection established successfully!")
+## 5. End-to-End Reproduction Instructions
+
+### Step 1: Environment Setup
+```bash
+pip install -r requirements.txt
+```
+
+### Step 2: Training & Threshold Tuning
+1. Run `notebooks/02_train_lightgbm.ipynb` to construct the anchored feature dataset and train the LightGBM classifier.
+2. Run `notebooks/03_threshold_tuning.ipynb` to evaluate precision vs. recall across thresholds $[0.50, 0.95]$ and determine the optimal $F_{0.5}$ decision threshold.
+
+### Step 3: Inference & Submission Generation
+1. Run `notebooks/04_submission.ipynb` to stream `test_source1.tsv` against the pre-built Source 2/3 inverted index, compute similarity features, apply the calibrated threshold, and emit:
+   - `output/matching_results.tsv`
+   - `output/candidate_pairs.tsv`
+
+### Step 4: Validate and Package Submission
+```bash
+# 1. Validate format against official competition rules
+python3 utils/validate_submission.py \
+    --matching output/matching_results.tsv \
+    --candidate output/candidate_pairs.tsv \
+    --test-dir dataset/test
+
+# 2. Package into official submission ZIP
+python3 utils/package_submission.py \
+    --team-name <your_team_name> \
+    --matching output/matching_results.tsv \
+    --candidate output/candidate_pairs.tsv \
+    --doc docs/Documentation_template.md
 ```
 
 ---
 
-## 5. Antigravity AI Pair Programming
-
-We use **Google Antigravity** as our core AI coding assistant.
-To keep full context across conversations, start new Antigravity chats with our Master Context reference:
+## 6. Official Submission Archive Structure
 ```text
-Project: Amazon ML Challenge 2026
-Master Context: conversation://afe57c16-937c-4ea0-9b50-31b154b41a0a
-Storage: AWS S3 central cloud lake at s3://<BUCKET>/
-Compute: Google Colab
+<team_name>_submission.zip
+├── output/
+│   ├── matching_results.tsv       # Scored matches
+│   └── candidate_pairs.tsv        # Candidate blocking pairs
+├── code/
+│   └── business_entity_resolution/
+│       ├── src/                   # Source code
+│       ├── README.md              # Reproduction instructions
+│       └── requirements.txt       # Dependencies
+└── Documentation_template.md      # Methodology report
 ```
-Refer to [`docs/ai_prompt_playbook.md`](file:///home/shubham/Projects/Amazon%20ML%20Hackathon/docs/ai_prompt_playbook.md) for detailed prompts tailored for every stage of the pipeline.
-
----
-
-## 6. Documentation & Roadmaps
-
-- 📘 [**Team Setup & Colab-S3 Guide**](file:///home/shubham/Projects/Amazon%20ML%20Hackathon/docs/Team_Setup_Colab_Git_S3_Guide.md): 3-minute setup instructions for Google Colab, GitHub UI, and S3 credentials.
-- 📙 [**Team A Data Pipeline Roadmap**](file:///home/shubham/Projects/Amazon%20ML%20Hackathon/docs/Team_A_Data_Pipeline_Roadmap.md): In-depth guide for filtering, text normalization, blocking, and feature extraction.
-- 📗 [**Team B Modeling & Submission Roadmap**](file:///home/shubham/Projects/Amazon%20ML%20Hackathon/docs/Team_B_Modeling_Submission_Roadmap.md): In-depth guide for LightGBM training, threshold tuning, and submission formatting.
-- 📕 [**AI Prompt Playbook**](file:///home/shubham/Projects/Amazon%20ML%20Hackathon/docs/ai_prompt_playbook.md): Battle-tested Antigravity prompts across every hackathon stage.
-- 📋 [**Documentation Template**](file:///home/shubham/Projects/Amazon%20ML%20Hackathon/docs/Documentation_template.md): Official methodology document to include in the final submission zip.
-
----
-
-## 7. Git Workflow Rules
-
-1. **Use Colab UI:** Save your notebooks via **File $\rightarrow$ Save a copy in GitHub**.
-2. **Never commit raw or processed datasets, Parquet files, or model binaries to Git.** (Enforced via `.gitignore` and central S3 storage).
-3. Work strictly inside your designated personal directory: `notebooks/<YourName>/`.

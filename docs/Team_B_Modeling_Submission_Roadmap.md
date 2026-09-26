@@ -215,9 +215,23 @@ s3.upload_file("my_team_submission.zip", BUCKET, "submissions/final_team_submiss
 
 ---
 
-## 4. Team B Golden Rules & Anti-Mistakes
+## 4. Team B Version Control & Antigravity Workflow
+
+### Version Control in Colab (Zero Commands)
+1. **Open your notebook:** In Colab, **File $\rightarrow$ Open notebook $\rightarrow$ GitHub tab** $\rightarrow$ `ShubhamJain17r/Amazon-ML-Hackathon` $\rightarrow$ pick your notebook under `notebooks/<YourName>/`.
+2. **Save your work:** Click **File $\rightarrow$ Save a copy in GitHub** $\rightarrow$ branch `main` $\rightarrow$ add commit message $\rightarrow$ OK.
+
+### Generating Code with Antigravity
+When asking Antigravity to write models, sweep thresholds, or format submissions:
+1. Include the Master Context link: `conversation://afe57c16-937c-4ea0-9b50-31b154b41a0a`.
+2. Use the detailed prompts from [`docs/ai_prompt_playbook.md`](file:///home/shubham/Projects/Amazon%20ML%20Hackathon/docs/ai_prompt_playbook.md) (Stages 5 through 7).
+
+---
+
+## 5. Team B Golden Rules & Anti-Mistakes
 
 - **DO NOT** use default 0.5 threshold. $F_{0.5}$ rewards precision; your optimal threshold will usually be 0.65–0.78.
 - **DO NOT** miss any S1 entity. All 1,732,544 IDs from `test_source1.tsv` must appear.
+- **DO NOT** run complex git commands inside Colab. Use **File $\rightarrow$ Save a copy in GitHub**.
 - **DO NOT** submit without running `utils/validate_submission.py` locally.
 - **DO NOT** upload a zipped file directly to the leaderboard portal. The portal takes only `matching_results.tsv`. The zip is for final code review.

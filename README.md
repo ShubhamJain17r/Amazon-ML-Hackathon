@@ -93,51 +93,57 @@ s3://<your-bucket-name>/
 
 ---
 
-## 4. Quickstart Guide
+## 4. Quickstart Guide (Google Colab & S3)
 
-### 1. Installation
-Clone the repository and install the dependencies:
-```bash
-git clone https://github.com/ShubhamJain17r/Amazon-ML-Hackathon.git
-cd Amazon-ML-Hackathon
-pip install -r requirements.txt
-```
+### 1. Open Notebooks via Colab GitHub Integration
+Our team uses Colab's native GitHub UI (**Zero terminal commands required**):
+1. In Colab: **File $\rightarrow$ Open notebook $\rightarrow$ GitHub tab**.
+2. Select repository `ShubhamJain17r/Amazon-ML-Hackathon`.
+3. Open your notebook in `notebooks/<YourName>/`.
+4. When finished, click **File $\rightarrow$ Save a copy in GitHub** to commit directly to `main`!
 
 ### 2. AWS S3 Credentials Configuration
-Set your AWS access credentials so pandas, DuckDB, and boto3 can read/write to the central S3 store:
+Store your AWS credentials in Colab's left sidebar (**Secrets / Key icon**):
+- `AWS_ACCESS_KEY_ID`
+- `AWS_SECRET_ACCESS_KEY`
+- `AWS_DEFAULT_REGION` (`us-east-1`)
+- `S3_BUCKET_NAME`
 
-```bash
-export AWS_ACCESS_KEY_ID="your_access_key"
-export AWS_SECRET_ACCESS_KEY="your_secret_key"
-export AWS_DEFAULT_REGION="us-east-1"
-```
-*(In Google Colab, add these under the **Secrets (Key icon)** tab in the left sidebar).*
-
-### 3. Verify S3 Connection & Environment
-Run the setup test cell in your notebook or terminal:
+### 3. Verify S3 Connection in Colab
 ```python
 import s3fs
-import pandas as pd
-
 fs = s3fs.S3FileSystem()
 print("S3 connection established successfully!")
 ```
 
 ---
 
-## 5. Documentation & Roadmaps
+## 5. Antigravity AI Pair Programming
 
-- 📘 [**Team Setup & Colab-S3 Guide**](file:///home/shubham/Projects/Amazon%20ML%20Hackathon/docs/Team_Setup_Colab_Git_S3_Guide.md): 5-minute setup instructions for Google Colab, GitHub, and S3 credentials.
+We use **Google Antigravity** as our core AI coding assistant.
+To keep full context across conversations, start new Antigravity chats with our Master Context reference:
+```text
+Project: Amazon ML Challenge 2026
+Master Context: conversation://afe57c16-937c-4ea0-9b50-31b154b41a0a
+Storage: AWS S3 central cloud lake at s3://<BUCKET>/
+Compute: Google Colab
+```
+Refer to [`docs/ai_prompt_playbook.md`](file:///home/shubham/Projects/Amazon%20ML%20Hackathon/docs/ai_prompt_playbook.md) for detailed prompts tailored for every stage of the pipeline.
+
+---
+
+## 6. Documentation & Roadmaps
+
+- 📘 [**Team Setup & Colab-S3 Guide**](file:///home/shubham/Projects/Amazon%20ML%20Hackathon/docs/Team_Setup_Colab_Git_S3_Guide.md): 3-minute setup instructions for Google Colab, GitHub UI, and S3 credentials.
 - 📙 [**Team A Data Pipeline Roadmap**](file:///home/shubham/Projects/Amazon%20ML%20Hackathon/docs/Team_A_Data_Pipeline_Roadmap.md): In-depth guide for filtering, text normalization, blocking, and feature extraction.
 - 📗 [**Team B Modeling & Submission Roadmap**](file:///home/shubham/Projects/Amazon%20ML%20Hackathon/docs/Team_B_Modeling_Submission_Roadmap.md): In-depth guide for LightGBM training, threshold tuning, and submission formatting.
-- 📕 [**AI Prompt Playbook**](file:///home/shubham/Projects/Amazon%20ML%20Hackathon/docs/ai_prompt_playbook.md): Battle-tested prompts for coding assistants across every hackathon stage.
+- 📕 [**AI Prompt Playbook**](file:///home/shubham/Projects/Amazon%20ML%20Hackathon/docs/ai_prompt_playbook.md): Battle-tested Antigravity prompts across every hackathon stage.
 - 📋 [**Documentation Template**](file:///home/shubham/Projects/Amazon%20ML%20Hackathon/docs/Documentation_template.md): Official methodology document to include in the final submission zip.
 
 ---
 
-## 6. Git Workflow Rules
+## 7. Git Workflow Rules
 
-1. **Never commit raw or processed datasets, Parquet files, or model binaries to Git.** (Enforced via `.gitignore`).
-2. Always pull before editing: `git pull origin main`.
+1. **Use Colab UI:** Save your notebooks via **File $\rightarrow$ Save a copy in GitHub**.
+2. **Never commit raw or processed datasets, Parquet files, or model binaries to Git.** (Enforced via `.gitignore` and central S3 storage).
 3. Work strictly inside your designated personal directory: `notebooks/<YourName>/`.
-4. Team members create PRs or commit isolated changes to their own personal folders.

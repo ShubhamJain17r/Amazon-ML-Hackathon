@@ -1,182 +1,298 @@
-# Amazon ML Challenge 2026 — AI Prompt Playbook
-### Master Prompts for All Stages of the Competition
-*Use these exact prompts with your AI assistant during the hackathon for high-precision, bug-free outputs.*
+# Amazon ML Challenge 2026 — Master AI Prompt Playbook
+### High-Precision Engineering Prompts for Google Antigravity
+*Use these prompts with Google Antigravity to generate bug-free, production-grade ML code tailored for our central S3 storage and Colab compute workflow.*
 
 ---
 
-## Stage 0: Environment & S3 Sanity Verification
-**Target:** Jupyter Notebook / Google Colab (`notebooks/<your_name>/00_setup_test.ipynb`)  
-**Prompt:**
+## 1. How to Use Antigravity for Cross-Conversation Context
+
+When starting a new conversation in Antigravity or handing off tasks between team members, **always paste the Master Context Header** at the start of your message. This allows Antigravity to instantly link context, data schemas, and prior decisions from previous conversations without repeating explanations.
+
+### Master Context Header (Copy & Paste at the Start of New Conversations)
 ```text
-Act as a Senior Cloud ML Engineer. Write a self-contained Python script for a Google Colab / Jupyter notebook cell that validates our environment for the Amazon ML Challenge 2026.
-Context: We use Google Colab / local machines for compute and AWS S3 as our central cloud data store.
+Project: Amazon ML Challenge 2026 — Multilingual Business Entity Resolution
+Repository: ShubhamJain17r/Amazon-ML-Hackathon
+Reference Master Conversation: conversation://afe57c16-937c-4ea0-9b50-31b154b41a0a
+Architecture:
+- Cloud Storage: AWS S3 central data lake (s3://<BUCKET>/raw, filtered, candidates, features, models, submissions)
+- Compute: Google Colab / Local Python 3.10+
+- Version Control: GitHub ("Save a copy in GitHub" Colab integration)
+- Evaluation Metric: Macro F_0.5 score across all Source 1 entities (Precision has 2x weight over Recall; singletons evaluate to 1.0 if predicted empty)
+```
+
+> [!TIP]
+> **Recommended Antigravity Slash Commands:**
+> - `/grill-me`: Use when designing new feature combinations or blocking heuristics to evaluate edge cases before coding.
+> - `/goal`: Use when asking Antigravity to build or refactor an entire multi-step pipeline end-to-end.
+> - `/learn`: Use after finding a high-scoring threshold or optimal hyperparameter set to persist that knowledge for future sessions.
+
+---
+
+## 2. Stage-by-Stage Antigravity Prompts
+
+---
+
+### Stage 0: Colab Environment & Central S3 Connectivity Verification
+**Target:** Colab Notebook (`notebooks/<your_name>/00_s3_setup_test.ipynb`)  
+**Antigravity Prompt:**
+```text
+[Master Context: conversation://afe57c16-937c-4ea0-9b50-31b154b41a0a]
+
+Act as a Principal Cloud ML Engineer.
+Write a comprehensive, self-contained Python validation script to run as the first cell in a Google Colab notebook for the Amazon ML Challenge 2026.
+
 Requirements:
-1. Check if required libraries ('pandas', 'numpy', 'rapidfuzz', 'lightgbm', 'pyarrow', 'boto3', 's3fs', 'duckdb') are installed; print pip install commands if missing.
-2. Test read and write permissions to our central S3 bucket 's3://<INSERT_YOUR_BUCKET_NAME>/' by creating a tiny dummy DataFrame, saving it as parquet directly to S3 via s3fs, and reading it back.
-3. Inspect available CPU count and RAM on this instance to ensure we don't encounter OOM errors later.
-4. Include clear status messages (PASS/FAIL) for each check.
+1. Environment Check:
+   - Check if 'pandas', 'numpy', 'rapidfuzz', 'lightgbm', 'pyarrow', 'boto3', 's3fs', 'duckdb' are installed. If missing, automatically run '!pip install -q' for them.
+2. Credentials & Authentication:
+   - Read AWS credentials securely from Google Colab userdata secrets ('AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_DEFAULT_REGION', 'S3_BUCKET_NAME').
+   - Provide clear instructions in an exception block if secrets are missing.
+3. S3 Read/Write Integrity Audit:
+   - Initialize s3fs.S3FileSystem().
+   - Create a small diagnostic DataFrame with columns: ['test_id', 'timestamp', 'status'].
+   - Write it to 's3://<BUCKET>/diagnostics/ping.parquet' using pyarrow.
+   - Read it back from S3, verify row count matches, and print success latency in milliseconds.
+   - Delete the temporary test parquet to leave no clutter.
+4. Hardware & Resource Audit:
+   - Print total available system RAM (in GB), CPU core count, and GPU availability (e.g. NVIDIA T4 or CPU).
+   - Display a formatted PASS/FAIL summary table.
 ```
 
 ---
 
-## Stage 1 (Team A): Subsampled EDA & Multilingual Check
-**Target:** Jupyter Notebook (`notebooks/<your_name>/01_eda_sample.ipynb`)  
-**Prompt:**
+### Stage 1: Exploratory Data Analysis & Multilingual Text Audit
+**Target:** Colab Notebook (`notebooks/<your_name>/01_eda_multilingual.ipynb`)  
+**Antigravity Prompt:**
 ```text
-Act as an Expert Data Scientist. Write clean, modular Jupyter notebook code to perform Exploratory Data Analysis (EDA) on a 50,000-row sample of the Amazon ML Challenge dataset directly from AWS S3.
+[Master Context: conversation://afe57c16-937c-4ea0-9b50-31b154b41a0a]
+
+Act as a Senior Data Scientist specializing in Multilingual NLP and Entity Resolution.
+Write a clean, memory-conscious Google Colab script to perform exploratory data analysis directly on the training dataset stored in AWS S3 ('s3://<BUCKET>/raw/').
+
+Data Specifications:
+- Source 1: ~2.2M records; Source 2 & 3: ~10.3M records combined; Ground Truth: ~1.8M mappings.
+- Columns: 'entity_id', 'name', 'address', 'city', 'state', 'postal_code', 'country'.
+- TSVs are tab-separated (sep='\t').
+
 Requirements:
-1. Read the first 50,000 rows from 's3://<BUCKET>/raw/train_source1.tsv' using pandas with sep="\t" and s3fs.
-2. Check and print: distribution of 'country', percentage of Hindi (Devanagari) characters in business_name, missing value percentages, and the singleton rate from 'train_ground_truth.tsv'.
-3. Provide 5 representative examples of noisy business names (abbreviations, punctuation, legal suffixes, typos).
-4. Keep memory footprint under 500 MB. Provide concise explanations of what the findings mean for feature engineering and blocking.
+1. Stream a 50,000-row sample of 'train_source1.tsv' and 'train_ground_truth.tsv' using pandas and s3fs.
+2. Statistical Profile:
+   - Country breakdown (frequency & percentage).
+   - Null and whitespace-only value rates per column.
+   - Singleton rate in ground truth (entities where 'matched_entity_ids' is empty/NaN).
+3. Multilingual Character Detection:
+   - Detect and report frequency of Hindi Devanagari Unicode characters (\u0900-\u097F).
+   - Detect and report European accented characters (for French test set readiness).
+   - Provide 5 real examples of noisy entity names (e.g., Devanagari script, punctuation spam, company abbreviations like 'Pvt Ltd', 'Co', 'LLP').
+4. Address Analysis:
+   - Character length distribution of address strings.
+   - Token count distribution.
+5. Actionable Recommendations:
+   - Print a bulleted summary of specific cleaning rules required based on the observed data.
 ```
 
 ---
 
-## Stage 2 (Team A): Text Normalization, Data Filtering & Inverted Index Blocking
-**Target:** Python Script (`src/blocking.py`)  
-**Prompt:**
+### Stage 2: Multilingual Normalization & Suffix Filtering Module
+**Target:** Python Module / Colab Cell (`src/normalization.py`)  
+**Antigravity Prompt:**
 ```text
-Act as an Expert ML Search & Entity Resolution Engineer. We are building the blocking / candidate-generation module for the Amazon ML Challenge 2026.
-Dataset Constraints:
-- Source 1 has ~2.2M records; Source 2+3 combined have ~10.3M records.
-- Countries in train: US, India. Country in test additionally includes: France.
-- We CANNOT do pairwise Cartesian product (O(N*M)) as it will crash with Out-Of-Memory.
-Write a production-grade, memory-safe Python module ('src/blocking.py'):
-1. 'clean_text(text)': Unicode NFKD normalization, lowercase, standardization of legal suffixes ('pvt', 'ltd', 'corp', 'inc', 'llc', 'llp', 'co'), street abbreviations ('rd', 'st', 'ave', 'blvd'), and handling of multilingual characters (Hindi Devanagari and French accents).
-2. 'generate_blocking_candidates(s1_df, s23_df, max_candidates=5)':
-   - Partition strictly by 'country' first (never compare across different countries).
-   - Use a memory-efficient inverted index based on significant word tokens (length >= 3) to retrieve top candidates with highest token overlap.
-   - Yield results in streaming chunks or batches to keep memory below 4GB.
-3. Save filtered cleaned records to 's3://<BUCKET>/filtered/' and candidate pairs to 's3://<BUCKET>/candidates/' in Parquet format.
-4. Self-Critique: Review your code before providing it. Ensure it handles missing values (NaNs), does not crash on empty strings, and handles the French test set seamlessly.
+[Master Context: conversation://afe57c16-937c-4ea0-9b50-31b154b41a0a]
+
+Act as a Senior NLP Software Engineer.
+Write an ultra-fast, robust string normalization module ('src/normalization.py') tailored for the Amazon ML Challenge 2026.
+
+Dataset Realities:
+- The data contains noisy English, Indian English, Hindi Devanagari text, and French accented text in the test set.
+- Legal suffixes vary widely (e.g., "Pvt. Ltd.", "Private Limited", "Inc.", "Corp.", "LLC", "LLP", "S.A.", "SARL").
+- Address abbreviations vary (e.g., "Rd.", "Road", "St", "Street", "Ave", "Avenue", "Blvd").
+
+Requirements:
+1. 'clean_business_name(text: str) -> str':
+   - Return empty string if input is None, NaN, or non-string.
+   - Perform Unicode NFKD normalization to cleanly separate accents.
+   - Convert to lowercase and strip leading/trailing whitespace.
+   - Standardize business designations: map ('private limited', 'pvt ltd', 'pvt. ltd.', 'p ltd') -> 'pvt ltd'; map ('corporation', 'corp.', 'incorporated', 'inc.') -> 'inc'; map ('limited', 'ltd.') -> 'ltd'; map ('llp', 'llc') -> 'llc'.
+   - Retain standard alphanumeric characters, whitespace, and Hindi Devanagari range (\u0900-\u097F).
+   - Collapse multiple consecutive whitespace characters into a single space.
+2. 'clean_address(text: str) -> str':
+   - Standardize street types: ('road', 'rd', 'rd.') -> 'road'; ('street', 'st', 'st.') -> 'street'; ('avenue', 'ave', 'ave.') -> 'avenue'.
+   - Normalize postal codes and remove excessive punctuation.
+3. Unit Tests:
+   - Include 6 automated test assertions at the bottom covering: None/empty inputs, Hindi names, French accents, legal suffix normalization, address abbreviations, and punctuation removal.
+   - Ensure the module executes in < 0.05ms per record.
 ```
 
 ---
 
-## Stage 3 (Team A): Feature Extraction & Parquet Export to Central S3
-**Target:** Python Script (`src/features.py`)  
-**Prompt:**
+### Stage 3: Country-Partitioned Inverted Index Blocking Pipeline
+**Target:** Python Module (`src/blocking.py`)  
+**Antigravity Prompt:**
 ```text
-Act as a Senior ML Performance Engineer. We need to compute string similarity features on candidate pairs for the Amazon ML Challenge and save the results directly to AWS S3 in Parquet format.
+[Master Context: conversation://afe57c16-937c-4ea0-9b50-31b154b41a0a]
+
+Act as an Expert Search & Entity Resolution Architect.
+We need to generate candidate matching pairs between Source 1 (~2.2M rows) and Source 2+3 (~10.3M rows) for the Amazon ML Challenge.
+Pairwise Cartesian product is O(N*M) (~2.2e13 comparisons) and will crash. We need candidate blocking that retrieves top $\le 5$ candidates per Source 1 entity.
+
+Requirements:
+1. Country Partitioning:
+   - Partition records strictly by 'country' (US, IN, FR). Never cross-compare different countries!
+2. Inverted Index Blocking:
+   - Within each country, build an inverted index on Source 2+3 normalized name tokens.
+   - Filter out stopwords and short tokens (< 3 characters).
+   - For each Source 1 record, query the inverted index using its tokens.
+   - Rank candidates by shared token count and select top 'max_candidates' (default 5).
+3. Memory Safety:
+   - Process in streaming batches (e.g., 50,000 Source 1 records at a time) to prevent RAM spikes on Colab.
+   - Explicitly call 'gc.collect()' between batches.
+4. Output Schema:
+   - Return DataFrame with columns: ['source1_entity_id', 'candidate_entity_id', 's1_name', 's23_name', 's1_addr', 's23_addr', 'country'].
+5. Direct S3 Parquet Export:
+   - Save candidate pairs to 's3://<BUCKET>/candidates/train_candidates_sample50k.parquet' (or full).
+```
+
+---
+
+### Stage 4: RapidFuzz C++ Similarity Feature Extraction Engine
+**Target:** Python Module (`src/features.py`)  
+**Antigravity Prompt:**
+```text
+[Master Context: conversation://afe57c16-937c-4ea0-9b50-31b154b41a0a]
+
+Act as a High-Performance ML Engineer.
+Write an optimized feature extraction pipeline using the C++ RapidFuzz engine to compute similarity metrics on candidate pairs.
+
 Input Data:
-- Candidate pairs DataFrame containing ('source1_entity_id', 'candidate_entity_id', 's1_name', 's23_name', 's1_addr', 's23_addr', 'country').
-- Ground truth pairs to assign binary 'label' (1 for true match, 0 for negative).
+- Candidate pairs DataFrame from S3 candidates folder.
+- Ground truth set: 's3://<BUCKET>/raw/train_ground_truth.tsv'.
+
 Requirements:
-1. Use 'rapidfuzz' (fast C++ implementation) to compute:
-   - name_ratio, name_partial_ratio, name_token_sort_ratio, name_token_set_ratio.
-   - addr_ratio, addr_partial_ratio, addr_token_set_ratio.
-   - name_len_diff, addr_len_diff.
-2. Perform GroupShuffleSplit(test_size=0.2, random_state=42) grouped strictly by 'source1_entity_id' to prevent data leakage between train and validation sets.
-3. Memory Optimization: Process candidate pairs in chunks of 50,000 rows. Use downcasted dtypes (float32, int8) to save RAM.
-4. Export 'train_candidates.parquet' and 'val_candidates.parquet' directly to 's3://<BUCKET_NAME>/features/full/'.
-5. Double-check: Confirm that no Source 1 entity appears in both the train and validation splits.
+1. Ground Truth Lookup:
+   - Load ground truth into a Python set of (s1_id, candidate_id) tuples for O(1) membership check.
+2. Vectorized RapidFuzz Computations:
+   - Pre-allocate numpy arrays with downcasted dtypes (float32, int16, int8) to cut RAM consumption by 50%.
+   - Compute:
+     * 'name_ratio': fuzz.ratio / 100.0 (float32)
+     * 'name_partial': fuzz.partial_ratio / 100.0 (float32)
+     * 'name_token_sort': fuzz.token_sort_ratio / 100.0 (float32)
+     * 'name_token_set': fuzz.token_set_ratio / 100.0 (float32)
+     * 'addr_ratio': fuzz.ratio / 100.0 (float32)
+     * 'addr_partial': fuzz.partial_ratio / 100.0 (float32)
+     * 'addr_token_set': fuzz.token_set_ratio / 100.0 (float32)
+     * 'name_len_diff': abs(len(s1) - len(s23)) (int16)
+     * 'addr_len_diff': abs(len(s1) - len(s23)) (int16)
+3. Leak-Proof GroupShuffleSplit:
+   - Split into 80% train and 20% validation, strictly grouped by 'source1_entity_id'.
+   - Validate with an assertion that len(set(train_s1).intersection(set(val_s1))) == 0.
+4. Export:
+   - Write directly to 's3://<BUCKET>/features/sample_50k/train_candidates.parquet' and 'val_candidates.parquet' with pyarrow and storage_options support.
 ```
 
 ---
 
-## Stage 4 (Team B): Day-1 Fast Baseline Submission Pipeline
-**Target:** Jupyter Notebook (`notebooks/<your_name>/02_quick_baseline.ipynb`)  
-**Prompt:**
+### Stage 5: LightGBM Model Training with Class Imbalance Weighting
+**Target:** Colab Notebook (`notebooks/<your_name>/02_train_lightgbm.ipynb`)  
+**Antigravity Prompt:**
 ```text
-Act as a Competitive Data Scientist. We need a rapid baseline script for Day 1 of the Amazon ML Challenge that generates valid submission files without training a complex model.
-Challenge Rules:
-- Must generate 'output/matching_results.tsv' and 'output/candidate_pairs.tsv'.
-- Every test Source 1 entity must appear (1,732,544 rows).
-- Singletons must have an empty 'matched_entity_ids' string.
-- Final matches must be a subset of candidate pairs.
-- Must pass 'python3 utils/validate_submission.py'.
-Write a clean, complete script that:
-1. Reads 'test_source1.tsv', 'test_source2.tsv', and 'test_source3.tsv' (from central S3 's3://<BUCKET>/raw/' or local cache).
-2. Uses an exact normalized name match heuristic to find high-confidence matches.
-3. Formats both TSV files with correct tab delimiters and exact column headers.
-4. Executes 'utils/validate_submission.py' at the end and prints the validation result.
-5. Add safeguards so it doesn't crash on the French records in the test set.
-```
+[Master Context: conversation://afe57c16-937c-4ea0-9b50-31b154b41a0a]
 
----
+Act as a Kaggle Grandmaster & Gradient Boosting Specialist.
+Write a production training notebook cell that loads feature Parquets directly from AWS S3 and trains a LightGBM classification model.
 
-## Stage 5 (Team B): LightGBM Training & Macro F_0.5 Evaluation
-**Target:** Jupyter Notebook / Python Script (`notebooks/<your_name>/03_train_lightgbm.ipynb`)  
-**Prompt:**
-```text
-Act as an Expert Competitive ML Specialist. We need to train a LightGBM classification model on the candidate pairs created by Team A for the Amazon ML Challenge 2026.
-Competition Nuances:
-- The evaluation metric is Macro F_0.5 score across all Source 1 entities.
-- F_0.5 formula: (1.25 * Precision * Recall) / (0.25 * Precision + Recall). Precision has 2x weight over recall!
-- Singletons (no true matches) get a score of 1.0 if predicted empty, and 0.0 if any false match is predicted.
-- Class imbalance: true matches (label=1) are only ~5-10% of candidate pairs.
-Write an end-to-end training and evaluation script:
-1. Load 'train_candidates.parquet' and 'val_candidates.parquet' directly from 's3://<BUCKET>/features/full/'.
-2. Set up LightGBM with parameters suited for imbalanced tabular matching ('scale_pos_weight', 'learning_rate', 'num_leaves', 'subsample').
-3. Implement the exact Competition Macro F_0.5 metric function that computes entity-level scores and averages them, correctly accounting for singletons.
-4. Train the model with early stopping on validation binary logloss.
-5. Save model weights to 's3://<BUCKET>/models/lgbm_model_latest.pkl'.
-6. Output feature importance to show which similarities matter most.
-```
+Challenge Conditions:
+- True matches (label=1) are heavily imbalanced (~5-8% positive rate).
+- Evaluation metric is Macro F_0.5 (Precision has 2x weight over Recall).
 
----
-
-## Stage 6 (Team B): Precision-Heavy Threshold Tuning & Predictions
-**Target:** Jupyter Notebook (`notebooks/<your_name>/04_tune_and_predict.ipynb`)  
-**Prompt:**
-```text
-Act as a Top Kaggle Grandmaster. We have trained our LightGBM model. Now we must optimize the decision threshold specifically for the Macro F_0.5 metric, and generate the final test predictions.
 Requirements:
-1. Sweep decision thresholds from 0.40 to 0.95 in increments of 0.02 on the validation set.
-2. For each threshold, compute the exact Macro F_0.5 score (including singleton handling).
-3. Display a table of (Threshold vs Precision vs Recall vs Macro F_0.5) and identify the peak threshold.
-4. Apply this optimal threshold to 'test_candidates.parquet' loaded from S3.
-5. Generate:
-   - 'output/matching_results.tsv' (only candidates with probability >= optimal threshold).
-   - 'output/candidate_pairs.tsv' (all blocking candidates evaluated by the model).
-6. Ensure every single entity from 'test_source1.tsv' has a row, even if no candidates passed the threshold.
-7. Run validation check using 'utils/validate_submission.py'.
+1. Load 'train_candidates.parquet' and 'val_candidates.parquet' from 's3://<BUCKET>/features/full/' (or sample_50k).
+2. Configure LightGBM:
+   - 'objective': 'binary'
+   - 'metric': 'binary_logloss'
+   - 'scale_pos_weight': 3.5 (compensates for class imbalance)
+   - 'learning_rate': 0.05
+   - 'num_leaves': 31
+   - 'subsample': 0.8
+   - 'colsample_bytree': 0.8
+   - 'n_estimators': 800
+3. Training & Callbacks:
+   - Early stopping on validation logloss (stopping_rounds=50).
+   - Display evaluation metrics every 50 iterations.
+4. Feature Importance:
+   - Print top features ranked by gain and split count.
+5. S3 Model Checkpointing:
+   - Serialize model using joblib and upload to 's3://<BUCKET>/models/lgbm_model_latest.pkl'.
 ```
 
 ---
 
-## Stage 7 (Team B): Submission Zip Packaging & Methodology Doc
-**Target:** Terminal / Bash Script  
-**Prompt:**
+### Stage 6: Precision-Heavy Macro F_0.5 Threshold Tuning & Singleton Logic
+**Target:** Colab Notebook (`notebooks/<your_name>/03_threshold_tuning.ipynb`)  
+**Antigravity Prompt:**
 ```text
-Act as an MLOps Engineer. Write a Python / Bash script to assemble the final submission ZIP package for the Amazon ML Challenge 2026.
-Structure required by competition:
-<team_name>_submission.zip
-├── output/
-│   ├── matching_results.tsv
-│   └── candidate_pairs.tsv
-├── src/
-│   ├── features.py
-│   ├── blocking.py
-│   └── ...
-├── Documentation_template.md
-└── requirements.txt
+[Master Context: conversation://afe57c16-937c-4ea0-9b50-31b154b41a0a]
+
+Act as an Expert Competition Evaluator.
+The Amazon ML Challenge 2026 evaluates using per-entity Macro F_0.5 score:
+F_0.5 = (1.25 * Precision * Recall) / (0.25 * Precision + Recall)
+Precision is weighted 2x more than recall! False positive matches severely hurt the score.
+Furthermore, singletons (entities with no true matches) receive a score of 1.0 if predicted empty (""), but 0.0 if any incorrect candidate is predicted.
+
 Requirements:
-1. Verify that 'output/matching_results.tsv' and 'output/candidate_pairs.tsv' exist and are non-empty.
-2. Run 'python3 utils/validate_submission.py --matching output/matching_results.tsv --candidate output/candidate_pairs.tsv --test-dir dataset/test'. If it fails, abort immediately.
-3. Check that 'requirements.txt' pins exact versions.
-4. Create the zip archive without extraneous '__pycache__' or hidden files.
-5. Upload a backup copy of the zip archive to 's3://<BUCKET>/submissions/'.
+1. Write a standalone Python function 'evaluate_macro_f05(ground_truth_map, predictions_map, all_s1_ids)' that computes the exact competition macro score across all entities.
+2. Sweep probability thresholds from 0.40 to 0.94 in steps of 0.02.
+3. For each threshold, compute:
+   - Overall Precision, Recall, and Macro F_0.5.
+   - Singleton accuracy rate (percentage of singletons correctly predicted as empty).
+4. Identify the winning threshold and print a formatted comparative table.
+5. Provide commentary on why the optimal threshold is significantly higher than 0.50.
 ```
 
 ---
 
-## Stage 8: Emergency Error / Bug-Fixing Prompt
-**Target:** Anytime code crashes  
-**Prompt:**
+### Stage 7: Test Inference, Output Formatting & Submission Validation
+**Target:** Colab Notebook (`notebooks/<your_name>/04_submission.ipynb`)  
+**Antigravity Prompt:**
 ```text
-I ran into an error during [INSERT STAGE NAME].
+[Master Context: conversation://afe57c16-937c-4ea0-9b50-31b154b41a0a]
+
+Act as an MLOps Competition Engineer.
+Generate the official competition TSV submission files for the Amazon ML Challenge 2026 from test predictions.
+
+Strict Competition Specifications:
+1. Two TSV files required:
+   - 'output/matching_results.tsv' with columns: ['source1_entity_id', 'matched_entity_ids']
+   - 'output/candidate_pairs.tsv' with columns: ['source1_entity_id', 'candidate_entity_ids']
+2. Exactly 1,732,544 rows in both files (every entity in 'test_source1.tsv' must appear exactly once).
+3. If an entity has multiple matches/candidates, join them with commas (e.g., "id1,id2").
+4. If an entity has no match above the optimal threshold, provide an empty string ("").
+5. Final matched_entity_ids MUST be a strict subset of candidate_entity_ids for every row.
+6. Run the local validator: 'python3 utils/validate_submission.py --matching output/matching_results.tsv --candidate output/candidate_pairs.tsv --test-dir dataset/test'.
+7. Upload copies of both validated TSV files to 's3://<BUCKET>/submissions/'.
+```
+
+---
+
+### Stage 8: Error Recovery & Debugging Prompt
+**Target:** Anytime code crashes or raises an exception  
+**Antigravity Prompt:**
+```text
+[Master Context: conversation://afe57c16-937c-4ea0-9b50-31b154b41a0a]
+
+I encountered an error during execution on Google Colab.
 Here is the exact error traceback:
-[PASTE ERROR TRACEBACK HERE]
-Here is the code snippet that caused it:
-[PASTE CODE SNIPPET HERE]
-Context:
-- Environment: Google Colab / Local Python 3.10+
-- Storage: AWS S3 Central Cloud Data Store via s3fs/boto3
-- Current data shape / types: [INSERT SHAPE OR DATA SAMPLE]
+[PASTE TRACEBACK HERE]
+
+Here is the code block that caused it:
+[PASTE CODE BLOCK HERE]
+
+Current Execution Context:
+- Environment: Google Colab (Python 3.10)
+- AWS Storage: S3 central bucket via s3fs / pyarrow
+- Data Batch / Shape: [DESCRIBE DATA INPUT]
+
 Please:
-1. Diagnose the exact root cause of this error in 1-2 plain English sentences.
-2. Provide the corrected, drop-in replacement code.
-3. Verify that the fix does not introduce side effects (such as memory leaks or wrong types).
+1. Identify the root cause in 1-2 clear sentences.
+2. Provide the complete, drop-in replacement code block.
+3. Confirm there are no hidden memory leaks or index misalignment bugs.
 ```

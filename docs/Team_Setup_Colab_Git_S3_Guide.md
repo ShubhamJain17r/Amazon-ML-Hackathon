@@ -1,78 +1,98 @@
-# Team Setup Guide: Google Colab + GitHub + Central AWS S3 Storage
+# Team Setup Guide: Google Colab + GitHub UI + Central AWS S3 Storage
 ### Repository: `https://github.com/ShubhamJain17r/Amazon-ML-Hackathon.git`
 
-> **Architecture Context:**  
-> In AWS, our team is **strictly using Amazon S3 for central cloud data storage**. We are **NOT** using SageMaker notebook instances (due to 0-instance quota restrictions and cost). Heavy computation (blocking, feature extraction, training) is executed on **Google Colab (Free GPU/High-RAM) or Local Machines**, connecting directly to our shared S3 bucket as a central database.
+> **Official Team Workflow:**  
+> Our team uses **Colab's Native GitHub Integration ("Save a copy in GitHub")** for version control. **Zero git commands, zero terminal configurations, and no personal access tokens required!**  
+> In AWS, we use **strictly Amazon S3** as our central cloud data store for all datasets and features.
 
 ---
 
-## 1. Quick Onboarding for Every Teammate (5 Minutes)
+## 1. The 3-Minute Team Onboarding (No Git Commands!)
 
-### Step 1: Open Google Colab or Local JupyterLab
-- If using **Google Colab**: Go to [colab.research.google.com](https://colab.research.google.com).
-- Under **Runtime $\rightarrow$ Change runtime type**, select **Python 3** (choose **T4 GPU** or High-RAM if available).
+### Step 1: Open Google Colab & Connect to GitHub (1-Time)
+1. Go to [colab.research.google.com](https://colab.research.google.com).
+2. Click **File $\rightarrow$ Open notebook**.
+3. Select the **GitHub** tab.
+4. Authorize Google Colab to connect to your GitHub account.
+5. In the repository search bar, select:
+   ```text
+   ShubhamJain17r/Amazon-ML-Hackathon
+   ```
+6. You will see all repository notebooks! Click your assigned notebook under `notebooks/<YourName>/` (or open a template to start fresh).
 
-### Step 2: Configure AWS S3 Credentials in Colab Secrets
-To avoid committing your AWS access keys into Git:
+---
+
+### Step 2: Configure S3 Credentials in Colab Secrets
+To read and write data to our central S3 database without exposing credentials in code:
 1. In Colab's left sidebar, click the **Key icon (Secrets)**.
-2. Add the following secrets (toggle "Notebook access" ON):
+2. Add these secrets (toggle **Notebook access** ON):
    - `AWS_ACCESS_KEY_ID`: `[Provided by Shubham]`
    - `AWS_SECRET_ACCESS_KEY`: `[Provided by Shubham]`
    - `AWS_DEFAULT_REGION`: `us-east-1`
    - `S3_BUCKET_NAME`: `[Provided by Shubham]`
-   - `GH_TOKEN`: `[Your personal GitHub Personal Access Token]`
-
-*(If working on your local machine, simply export these in your shell or place them in a `.env` file).*
 
 ---
 
-## 2. Universal Colab Starter Cell
-
-Copy and run this cell at the top of your notebook:
+### Step 3: Universal Colab Notebook Header Cell
+Paste and run this single cell at the very top of your Colab notebook:
 
 ```python
-# 1. Install dependencies
+# 1. Install cloud and performance libraries
 !pip install -q boto3 s3fs pyarrow duckdb rapidfuzz lightgbm scikit-learn
 
 import os
+import boto3
+import s3fs
+import pandas as pd
 from google.colab import userdata
 
-# 2. Inject AWS credentials into environment
+# 2. Authenticate AWS S3 using Colab Secrets
 os.environ["AWS_ACCESS_KEY_ID"] = userdata.get("AWS_ACCESS_KEY_ID")
 os.environ["AWS_SECRET_ACCESS_KEY"] = userdata.get("AWS_SECRET_ACCESS_KEY")
 os.environ["AWS_DEFAULT_REGION"] = userdata.get("AWS_DEFAULT_REGION", "us-east-1")
 BUCKET = userdata.get("S3_BUCKET_NAME")
 
-# 3. Clone repository and navigate inside
-if not os.path.exists("Amazon-ML-Hackathon"):
-    gh_token = userdata.get("GH_TOKEN")
-    !git clone https://{gh_token}@github.com/ShubhamJain17r/Amazon-ML-Hackathon.git
-
-%cd Amazon-ML-Hackathon
-
-# 4. Verify S3 connection
-import s3fs
+# 3. Verify S3 connection
 fs = s3fs.S3FileSystem()
-files = fs.ls(BUCKET)
-print(f"✅ S3 Central Store Connected! Found folders: {files}")
+print(f"✅ S3 Central Store Connected! Bucket: s3://{BUCKET}/")
+print(f"Available directories: {fs.ls(BUCKET)}")
 ```
 
 ---
 
-## 3. How to Access Central S3 Data
+## 2. Daily Workflow: Opening, Working, and Saving
 
-### Reading Filtered Data or Feature Sets
-You can read directly from S3 without saving large files locally:
+### How to Open Your Work Each Day
+1. Open [Google Colab](https://colab.research.google.com).
+2. Click **File $\rightarrow$ Open notebook $\rightarrow$ GitHub tab**.
+3. Select `ShubhamJain17r/Amazon-ML-Hackathon` and select your notebook under `notebooks/<YourName>/`.
 
+### How to Save Your Work (Commit Directly to GitHub)
+When you finish a work session or complete an experiment:
+1. In Colab's top menu, click: **File $\rightarrow$ Save a copy in GitHub**.
+2. Set:
+   - **Repository:** `ShubhamJain17r/Amazon-ML-Hackathon`
+   - **Branch:** `main`
+   - **File path:** `notebooks/<YourName>/<your_notebook_name>.ipynb`
+   - **Commit message:** Type a clear description (e.g., `feat: added Hindi text normalization and token blocking`)
+3. Click **OK**.
+
+👉 **Done!** Your notebook is committed and pushed directly to GitHub. No merge conflicts, no terminal commands!
+
+---
+
+## 3. Accessing the Central S3 Cloud Data Store
+
+Team members read and write directly to S3 via Parquet. Never save massive datasets inside notebooks!
+
+### Reading Filtered Data or Features
 ```python
-import pandas as pd
-
-# Load features generated by Team A
-train_features = pd.read_parquet(f"s3://{BUCKET}/features/sample_50k/train_candidates.parquet")
-print(f"Loaded {len(train_features):,} rows directly from S3!")
+# Load feature Parquets prepared by Team A directly into pandas
+train_df = pd.read_parquet(f"s3://{BUCKET}/features/sample_50k/train_candidates.parquet")
+print(f"Loaded {len(train_df):,} rows from S3!")
 ```
 
-### Fast SQL Querying using DuckDB (Zero Memory Waste)
+### Zero-RAM SQL Querying with DuckDB
 ```python
 import duckdb
 
@@ -84,32 +104,34 @@ con.execute(f"""
     SET s3_secret_access_key='{os.environ["AWS_SECRET_ACCESS_KEY"]}';
 """)
 
-# Query parquet in S3 without loading into RAM
-df = con.execute(f"SELECT * FROM 's3://{BUCKET}/features/sample_50k/train_candidates.parquet' WHERE label = 1 LIMIT 5000").df()
+# Query directly from S3 without consuming local RAM
+high_prob_matches = con.execute(f"""
+    SELECT source1_entity_id, candidate_entity_id, name_ratio
+    FROM 's3://{BUCKET}/features/full/train_candidates.parquet'
+    WHERE name_ratio > 0.85
+    LIMIT 1000
+""").df()
 ```
 
 ---
 
-## 4. Git Collaboration & Conflict Prevention
+## 4. Using Antigravity AI for Code Generation & Progress Tracking
 
-1. **Always pull before starting work:**
-   ```bash
-   git pull origin main
+We use **Google Antigravity** as our primary AI pair programmer across the team.
+
+### How to Maintain Context Across Conversations in Antigravity
+To ensure Antigravity understands your past progress, project architecture, and previous conversation context:
+
+1. **Provide the Conversation Reference Link**:  
+   At the start of any new Antigravity chat, reference the master project conversation:
+   ```text
+   Context: This is part of the Amazon ML Challenge 2026 project.
+   Reference Conversation: conversation://afe57c16-937c-4ea0-9b50-31b154b41a0a
+   Repository: ShubhamJain17r/Amazon-ML-Hackathon
+   Storage: AWS S3 central cloud lake at s3://<BUCKET>/
+   Compute: Google Colab
    ```
-
-2. **Work strictly in your assigned notebook directory:**
-   - Shubham: `notebooks/Shubham/`
-   - Karan: `notebooks/Karan/`
-   - Suhani: `notebooks/Suhani/`
-   - Vishal: `notebooks/Vishal/`
-
-3. **To commit and push:**
-   ```bash
-   git add notebooks/<YourName>/
-   git commit -m "feat: updated candidate generation logic"
-   git push origin main
-   ```
-
-> [!WARNING]
-> **NEVER commit datasets, `.tsv` files, `.parquet` files, or `.pkl` model weights to GitHub!**  
-> All data and model artifacts MUST be stored in the central S3 bucket.
+2. **Use the Playbook Prompts**:  
+   Refer to [`docs/ai_prompt_playbook.md`](file:///home/shubham/Projects/Amazon%20ML%20Hackathon/docs/ai_prompt_playbook.md) for pre-engineered, highly descriptive prompts for every stage of the competition.
+3. **Copy Code into Colab**:  
+   Antigravity outputs modular, complete code blocks that you can paste directly into your Colab notebook cells.

@@ -240,9 +240,23 @@ print("✅ Team A mission complete! Feature store uploaded to central S3.")
 
 ---
 
-## 5. Team A Golden Rules & Anti-Mistakes
+## 5. Team A Version Control & Antigravity Workflow
+
+### Version Control in Colab (Zero Commands)
+1. **Open your notebook:** In Colab, **File $\rightarrow$ Open notebook $\rightarrow$ GitHub tab** $\rightarrow$ `ShubhamJain17r/Amazon-ML-Hackathon` $\rightarrow$ `notebooks/Shubham/`.
+2. **Save your work:** Click **File $\rightarrow$ Save a copy in GitHub** $\rightarrow$ select branch `main` $\rightarrow$ add commit message $\rightarrow$ OK.
+
+### Generating Code with Antigravity
+When asking Antigravity to generate or debug pipeline components:
+1. Include the Master Context link: `conversation://afe57c16-937c-4ea0-9b50-31b154b41a0a`.
+2. Use the detailed prompts from [`docs/ai_prompt_playbook.md`](file:///home/shubham/Projects/Amazon%20ML%20Hackathon/docs/ai_prompt_playbook.md) (Stages 1 through 4) for high-precision code.
+
+---
+
+## 6. Team A Golden Rules & Anti-Mistakes
 
 - **DO NOT** use SageMaker notebook instances (quotas are 0). Use Google Colab or your local machine with S3 credentials.
+- **DO NOT** run complex git commands inside Colab. Use **File $\rightarrow$ Save a copy in GitHub**.
 - **DO NOT** save datasets into git repository. Always sync with `s3://<bucket>/`.
 - **DO NOT** read TSVs without `sep="\t"`.
 - **DO NOT** perform random row-based train/val splits. Group by `source1_entity_id`.

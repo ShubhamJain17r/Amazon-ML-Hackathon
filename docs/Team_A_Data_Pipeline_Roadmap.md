@@ -1,69 +1,126 @@
-
 # Amazon ML Challenge 2026 — Team A Playbook
-### Focus Area: Data Cleaning, Blocking, Normalization & Feature Pipeline
+### Focus Area: S3 Central Data Store, Data Filtering, Normalization & Feature Pipeline
 **Operating Window:** Friday 26th September (Full Day until 10:00 PM IST Hard Stop)  
-**Target Milestone:** Push clean `.parquet` feature sets to S3 before exam day (27th Sept).
+**Target Milestone:** Centralized S3 database populated with clean Parquet feature sets for Team B before exam day (27th Sept).
 
 ---
 
 ## 1. Executive Summary & Team Mission
 
-Team A has the most foundational responsibility in the entire hackathon:
-If your blocking misses a true match, the ML model will never find it. If your feature computation crashes or leaks data, the model fails.
+Team A owns the data foundation for the entire hackathon.
+Because AWS SageMaker compute quotas are constrained, **AWS is utilized exclusively for high-performance S3 cloud object storage (our central data lake / database)**. All heavy computation is run on **Google Colab (High-RAM/GPU) or local machines**, with S3 acting as the single source of truth across all teammates.
 
 Your core mission on September 26:
-1. **Never crash your machine:** Read the 3GB dataset efficiently without Out-Of-Memory (OOM) errors.
-2. **Text Normalization:** Handle noisy business names, legal abbreviations, addresses, and Hindi (Devanagari) script.
-3. **Smart Blocking:** Narrow down 26.4 million potential comparisons to $\le 5$ high-quality candidates per Source 1 entity.
-4. **Fast Similarity Feature Extraction:** Compute rapid string similarity scores (`rapidfuzz`).
-5. **Leak-Proof Train/Val Split:** Group by `source1_entity_id`.
-6. **S3 Delivery by 10:00 PM:** Save final clean Parquet files so Team B can train models on September 27.
+1. **S3 Central Cloud Database Setup:** Standardize S3 bucket hierarchy for raw, filtered, candidate, and feature datasets.
+2. **Memory-Safe Data Filtering & Normalization:** Clean noisy business names, legal suffixes, addresses, and Hindi (Devanagari) script without OOM errors.
+3. **Smart Blocking:** Filter comparison space from 26.4 million potential pairs down to $\le 5$ high-quality candidates per Source 1 entity (partitioned strictly by country).
+4. **Fast Similarity Feature Extraction:** Compute rapid string similarity scores (`rapidfuzz`) in memory-efficient batches.
+5. **Leak-Proof Train/Val Split:** Group by `source1_entity_id` to guarantee zero data leakage.
+6. **Central S3 Delivery by 10:00 PM:** Save final `.parquet` feature tables directly to S3 so Team B can train models on September 27.
 
 ---
 
-## 2. Team A Member Roles & Schedule
+## 2. Central S3 Storage Hierarchy (The Cloud Database)
+
+All team members connect to the central S3 bucket: `s3://<your-bucket-name>/`
+
+```text
+s3://<your-bucket-name>/
+├── raw/                               # Unprocessed source TSV files from Amazon
+│   ├── train_source1.tsv
+│   ├── train_source2.tsv
+│   ├── train_source3.tsv
+│   ├── train_ground_truth.tsv
+│   ├── test_source1.tsv
+│   ├── test_source2.tsv
+│   └── test_source3.tsv
+│
+├── filtered/                          # Cleaned, normalized, & filtered text data
+│   ├── clean_train_s1.parquet
+│   ├── clean_train_s23.parquet
+│   ├── clean_test_s1.parquet
+│   └── clean_test_s23.parquet
+│
+├── candidates/                        # Blocked candidate pairs (country-partitioned)
+│   ├── train_candidates_sample50k.parquet
+│   ├── train_candidates_full.parquet
+│   └── test_candidates_full.parquet
+│
+├── features/                          # Extracted similarity features for modeling
+│   ├── sample_50k/                    # Team B early-baseline test set
+│   │   ├── train_candidates.parquet
+│   │   └── val_candidates.parquet
+│   └── full/                          # Full competition training set
+│       ├── train_candidates.parquet
+│       ├── val_candidates.parquet
+│       └── test_candidates.parquet
+│
+├── models/                            # Trained LightGBM model weights and configs
+└── submissions/                       # Generated TSVs & official submission zips
+```
+
+---
+
+## 3. Team A Member Roles & Schedule
 
 | Member Role | Primary Focus | Key Responsibilities |
 |---|---|---|
-| **Member 1 (Team Leader)** | Architecture & Blocking | Inverted index blocking, country partitioning, S3 pipeline orchestration |
-| **Member 2 (Data Partner)** | Normalization & Features | String normalization, Devanagari text handling, Rapidfuzz feature extraction |
+| **Shubham (Lead)** | S3 Architecture & Blocking | S3 pipeline orchestration, inverted index blocking, country partitioning, S3 exports |
+| **Member 2 (Data Partner)** | Normalization & Features | String normalization, Devanagari text handling, Rapidfuzz feature extraction, data filtering |
 
 ### Timeline for Sept 26
-- **09:00 AM - 10:30 AM:** AWS SageMaker instance upgrade to `ml.m5.xlarge` (16GB RAM) and S3 test.
-- **10:30 AM - 01:00 PM:** **MILESTONE 1 (50k Sample):** Produce 50,000-entity sample Parquet and upload to `s3://<bucket>/processed/sample_50k/` for Team B.
-- **02:00 PM - 06:00 PM:** Full-scale country-partitioned blocking on train & test sets.
-- **06:00 PM - 09:30 PM:** Feature computation across all candidates in chunks.
-- **09:30 PM - 10:00 PM:** **MILESTONE 2 (Full Data):** Save full Parquets to `s3://<bucket>/processed/full/`. Handoff complete!
+- **09:00 AM - 10:00 AM:** Configure S3 bucket, test Colab/Local read/write permissions via `s3fs` and `boto3`.
+- **10:00 AM - 01:00 PM:** **MILESTONE 1 (50k Sample):** Run filtering, blocking, and feature extraction on 50,000 entities. Upload to `s3://<bucket>/features/sample_50k/` for Team B.
+- **02:00 PM - 06:00 PM:** Full-scale country-partitioned blocking on train & test sets; export candidate pairs to `s3://<bucket>/candidates/`.
+- **06:00 PM - 09:30 PM:** Streaming feature extraction across all candidates in batches.
+- **09:30 PM - 10:00 PM:** **MILESTONE 2 (Full Data):** Save full Parquets to `s3://<bucket>/features/full/`. Handoff complete!
 
 ---
 
-## 3. Step-by-Step Implementation Guide
+## 4. Step-by-Step Implementation Guide
 
-### Step 0: Upgrade SageMaker Instance (Avoid OOM Crashes)
-Your default `ml.t3.medium` has only 4GB RAM. Upgrading to `ml.m5.xlarge` gives you 16GB RAM and costs ~$0.23/hr (using your $200 credits):
-1. In SageMaker Console $ightarrow$ Notebook Instances $ightarrow$ Select notebook $ightarrow$ **Stop**.
-2. Click **Actions** $ightarrow$ **Edit** $ightarrow$ Change instance type to `ml.m5.xlarge` $ightarrow$ **Save**.
-3. Click **Start**. You now have 16GB RAM!
+### Step 0: Environment & Central S3 Access Setup
+*(Run in Google Colab or your Local Terminal)*
 
-Install dependencies in your terminal:
+Install required packages:
 ```bash
-pip install rapidfuzz lightgbm pyarrow s3fs boto3 tqdm
+pip install boto3 s3fs pyarrow duckdb rapidfuzz lightgbm scikit-learn tqdm
 ```
 
-### Step 1: Text Normalization (Multilingual Safe)
-India records include Hindi Devanagari text (e.g., *राम मार्केटिंग*), and test data contains French names. Use Unicode NFKD normalization:
+Authenticate with AWS S3:
+```python
+import os
+import boto3
+import s3fs
+
+# In Colab: Store these in Colab Secrets (Key icon on left) or set as environment variables
+AWS_ACCESS_KEY = os.environ.get("AWS_ACCESS_KEY_ID", "YOUR_KEY_HERE")
+AWS_SECRET_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "YOUR_SECRET_HERE")
+AWS_REGION = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
+BUCKET_NAME = "your-hackathon-bucket"
+
+# Initialize s3fs filesystem for direct pandas/pyarrow read/write
+fs = s3fs.S3FileSystem(key=AWS_ACCESS_KEY, secret=AWS_SECRET_KEY)
+print("S3 connection ready!")
+```
+
+---
+
+### Step 1: Text Normalization & Data Filtering
+Indian records include Hindi Devanagari text (e.g., *राम मार्केटिंग*), and test data contains French names.
+Normalize Unicode, strip punctuation, standardize business suffixes, and filter uninformative noise:
 
 ```python
 import re
 import unicodedata
 
-def clean_text(text):
-    if not isinstance(text, str):
+def clean_text(text: str) -> str:
+    if not isinstance(text, str) or not text.strip():
         return ""
-    # Normalize unicode accents and scripts cleanly
+    # Unicode NFKD normalization (handles Devanagari & French accents cleanly)
     text = unicodedata.normalize('NFKD', text).lower().strip()
     
-    # Standardize common business suffixes
+    # Standardize business entity designations
     text = re.sub(r'\b(pvt|private)\b', 'pvt', text)
     text = re.sub(r'\b(ltd|limited)\b', 'ltd', text)
     text = re.sub(r'\b(inc|incorporated)\b', 'inc', text)
@@ -75,28 +132,39 @@ def clean_text(text):
     text = re.sub(r'\b(rd|road)\b', 'road', text)
     text = re.sub(r'\b(st|street)\b', 'street', text)
     text = re.sub(r'\b(ave|avenue)\b', 'avenue', text)
+    text = re.sub(r'\b(blvd|boulevard)\b', 'blvd', text)
     
-    # Remove unwanted punctuation but keep alphanumeric and Hindi characters
-    text = re.sub(r'[^\w\s]', ' ', text)
+    # Retain alphanumeric characters, whitespace, and Hindi Devanagari Unicode range
+    text = re.sub(r'[^\w\s\u0900-\u097F]', ' ', text)
     return re.sub(r'\s+', ' ', text).strip()
 ```
 
+Save cleaned records directly to the S3 central lake:
+```python
+# Save filtered clean tables to S3
+clean_s1_df.to_parquet(f"s3://{BUCKET_NAME}/filtered/clean_train_s1.parquet", storage_options={"key": AWS_ACCESS_KEY, "secret": AWS_SECRET_KEY})
+clean_s23_df.to_parquet(f"s3://{BUCKET_NAME}/filtered/clean_train_s23.parquet", storage_options={"key": AWS_ACCESS_KEY, "secret": AWS_SECRET_KEY})
+```
+
+---
+
 ### Step 2: Country-Partitioned Inverted Index Blocking
-Never compare cross-country. Build an inverted index on significant words (length $\ge 3$):
+**Rule:** Never compare across different countries (US vs IN vs FR).
+Build an inverted index on significant tokens ($\ge 3$ characters) within each country to retrieve top $\le 5$ candidates:
 
 ```python
 from collections import defaultdict
 import pandas as pd
 
-def build_candidates_for_country(s1_df, s23_df, max_candidates=5):
-    # 1. Map tokens -> list of S2/S3 row indices
+def build_candidates_for_country(s1_df: pd.DataFrame, s23_df: pd.DataFrame, max_candidates: int = 5) -> pd.DataFrame:
+    # 1. Build inverted index: token -> list of S2/S3 row indices
     index = defaultdict(list)
     for idx, name in enumerate(s23_df['clean_name']):
         for token in set(name.split()):
             if len(token) >= 3:
                 index[token].append(idx)
                 
-    # 2. Match S1 records against index
+    # 2. Match S1 records against inverted index
     candidate_pairs = []
     for _, s1 in s1_df.iterrows():
         s1_id = s1['entity_id']
@@ -124,58 +192,58 @@ def build_candidates_for_country(s1_df, s23_df, max_candidates=5):
     return pd.DataFrame(candidate_pairs)
 ```
 
-### Step 3: Feature Extraction with Rapidfuzz
-Compute similarity features that the gradient boosting model will learn from:
-
+Save candidate pairs directly to S3:
 ```python
-from rapidfuzz import fuzz
-
-def compute_features(df):
-    features = pd.DataFrame()
-    features['source1_entity_id'] = df['source1_entity_id']
-    features['candidate_entity_id'] = df['candidate_entity_id']
-    
-    # Rapid name similarity metrics (0 to 1)
-    features['name_ratio'] = [fuzz.ratio(n1, n2)/100.0 for n1, n2 in zip(df['s1_name'], df['s23_name'])]
-    features['name_partial'] = [fuzz.partial_ratio(n1, n2)/100.0 for n1, n2 in zip(df['s1_name'], df['s23_name'])]
-    features['name_token_sort'] = [fuzz.token_sort_ratio(n1, n2)/100.0 for n1, n2 in zip(df['s1_name'], df['s23_name'])]
-    features['name_token_set'] = [fuzz.token_set_ratio(n1, n2)/100.0 for n1, n2 in zip(df['s1_name'], df['s23_name'])]
-    
-    # Address similarity metrics (0 to 1)
-    features['addr_ratio'] = [fuzz.ratio(a1, a2)/100.0 for a1, a2 in zip(df['s1_addr'], df['s23_addr'])]
-    features['addr_partial'] = [fuzz.partial_ratio(a1, a2)/100.0 for a1, a2 in zip(df['s1_addr'], df['s23_addr'])]
-    features['addr_token_set'] = [fuzz.token_set_ratio(a1, a2)/100.0 for a1, a2 in zip(df['s1_addr'], df['s23_addr'])]
-    
-    # Length differences
-    features['name_len_diff'] = [abs(len(n1) - len(n2)) for n1, n2 in zip(df['s1_name'], df['s23_name'])]
-    features['addr_len_diff'] = [abs(len(a1) - len(a2)) for a1, a2 in zip(df['s1_addr'], df['s23_addr'])]
-    return features
-```
-
-### Step 4: Leak-Proof Train/Val Split & S3 Export
-Group strictly by `source1_entity_id` so the same business never appears in both train and validation:
-
-```python
-from sklearn.model_selection import GroupShuffleSplit
-
-# Attach binary label from ground truth
-# (label = 1 if (s1, candidate) in ground_truth else 0)
-gss = GroupShuffleSplit(n_splits=1, test_size=0.20, random_state=42)
-train_idx, val_idx = next(gss.split(features_df, groups=features_df['source1_entity_id']))
-
-train_data = features_df.iloc[train_idx]
-val_data = features_df.iloc[val_idx]
-
-# Save to S3 in Parquet format
-train_data.to_parquet("s3://<your-bucket>/processed/full/train_candidates.parquet", index=False)
-val_data.to_parquet("s3://<your-bucket>/processed/full/val_candidates.parquet", index=False)
-print("Team A mission complete! Parquets saved to S3.")
+candidate_df.to_parquet(
+    f"s3://{BUCKET_NAME}/candidates/train_candidates_full.parquet",
+    storage_options={"key": AWS_ACCESS_KEY, "secret": AWS_SECRET_KEY}
+)
 ```
 
 ---
 
-## 4. Team A Golden Rules & Anti-Mistakes
+### Step 3: Feature Extraction (`src/features.py`)
+Run the vectorized C++ RapidFuzz engine to compute similarity scores, using float32 / int16 downcasting to keep memory low:
 
+- `name_ratio`, `name_partial`, `name_token_sort`, `name_token_set`
+- `addr_ratio`, `addr_partial`, `addr_token_set`
+- `name_len_diff`, `addr_len_diff`
+
+```python
+from src.features import compute_chunk_features, load_ground_truth_set
+
+true_pairs = load_ground_truth_set("s3://<bucket>/raw/train_ground_truth.tsv") # or local copy
+feat_chunk = compute_chunk_features(candidate_chunk, true_pairs=true_pairs)
+```
+
+---
+
+### Step 4: Leak-Proof Train/Val Split & S3 Delivery
+Group strictly by `source1_entity_id` so the same business entity never leaks across training and validation:
+
+```python
+from sklearn.model_selection import GroupShuffleSplit
+
+gss = GroupShuffleSplit(n_splits=1, test_size=0.20, random_state=42)
+train_idx, val_idx = next(gss.split(features_df, groups=features_df['source1_entity_id']))
+
+train_data = features_df.iloc[train_idx].reset_index(drop=True)
+val_data = features_df.iloc[val_idx].reset_index(drop=True)
+
+# Export directly to central S3 feature store
+storage_opts = {"key": AWS_ACCESS_KEY, "secret": AWS_SECRET_KEY}
+train_data.to_parquet(f"s3://{BUCKET_NAME}/features/full/train_candidates.parquet", index=False, storage_options=storage_opts)
+val_data.to_parquet(f"s3://{BUCKET_NAME}/features/full/val_candidates.parquet", index=False, storage_options=storage_opts)
+
+print("✅ Team A mission complete! Feature store uploaded to central S3.")
+```
+
+---
+
+## 5. Team A Golden Rules & Anti-Mistakes
+
+- **DO NOT** use SageMaker notebook instances (quotas are 0). Use Google Colab or your local machine with S3 credentials.
+- **DO NOT** save datasets into git repository. Always sync with `s3://<bucket>/`.
 - **DO NOT** read TSVs without `sep="\t"`.
 - **DO NOT** perform random row-based train/val splits. Group by `source1_entity_id`.
 - **DO NOT** compare entities across different countries.

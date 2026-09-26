@@ -1,26 +1,18 @@
-# Git & GitHub Setup Guide inside SageMaker JupyterLab
+# Git Setup Guide & Environment Notice
 ### Repository: `git@github.com:ShubhamJain17r/Amazon-ML-Hackathon.git`
 
-Every team member should run these steps once inside their own SageMaker JupyterLab instance.
+> [!IMPORTANT]
+> **COMPUTE ARCHITECTURE UPDATE:**  
+> Due to AWS default quota limitations on SageMaker notebook instances (`ResourceLimitExceeded: ml.m5.xlarge quota is 0`), our team is **exclusively using AWS S3 for central cloud data storage**. Heavy compute is run on **Google Colab or Local machines**.  
+> 👉 **For the latest setup instructions, see:** [`Team_Setup_Colab_Git_S3_Guide.md`](file:///home/shubham/Projects/Amazon%20ML%20Hackathon/docs/Team_Setup_Colab_Git_S3_Guide.md).
 
 ---
 
-## Step 1 — Open the Terminal in JupyterLab
+## Setting Up Git (Terminal / Local Machine / Colab)
 
-1. Open your SageMaker JupyterLab interface.
-2. In the top menu, click: **File → New → Terminal**
-3. Verify Git is installed:
-```bash
-git --version
-```
-*(You should see `git version 2.x.x`)*
+Every team member must configure their Git identity:
 
----
-
-## Step 2 — Configure Your Git Identity
-
-Set your personal name and the email associated with your GitHub account (each teammate should put their own name and email):
-
+### Step 1 — Configure Your Git Identity
 ```bash
 git config --global user.name "Your Full Name"
 git config --global user.email "your_github_email@example.com"
@@ -33,78 +25,33 @@ git config --global --list
 
 ---
 
-## Step 3 — Generate an SSH Key inside SageMaker
+### Step 2 — Generate an SSH Key (For Local Linux / Mac Machines)
 
 Run this command in the terminal (replace with your GitHub email):
-
 ```bash
 ssh-keygen -t ed25519 -C "your_github_email@example.com"
 ```
 
-- When prompted: `Enter file in which to save the key (/home/ec2-user/.ssh/id_ed25519):`  
-  👉 **Press Enter** (accept default).
-- When prompted: `Enter passphrase (empty for no passphrase):`  
-  👉 **Press Enter twice** (leave empty for seamless git push/pull without password prompts).
+- When prompted: `Enter file in which to save the key:` Press Enter (accept default).
+- When prompted: `Enter passphrase:` Press Enter twice (leave empty for passwordless push/pull).
 
 Now display your public SSH key:
 ```bash
 cat ~/.ssh/id_ed25519.pub
 ```
 
-Copy the entire output line that starts with `ssh-ed25519 ...`.
+Copy the output line starting with `ssh-ed25519 ...` and add it to your GitHub profile at **[github.com/settings/keys](https://github.com/settings/keys)**.
 
----
-
-## Step 4 — Add the SSH Key to Your GitHub Account
-
-1. Open GitHub in your web browser: **[github.com/settings/keys](https://github.com/settings/keys)**
-2. Click the green button: **New SSH key**
-3. **Title:** `AWS SageMaker - Amazon ML Challenge`
-4. **Key type:** `Authentication Key`
-5. **Key:** Paste the copied public key.
-6. Click **Add SSH key**.
-
-Verify the connection from your SageMaker terminal:
+Verify connection:
 ```bash
 ssh -T git@github.com
 ```
-*(Type `yes` if asked about host authenticity).*  
-You should see:
-> `Hi <YourUsername>! You've successfully authenticated, but GitHub does not provide shell access.`
 
 ---
 
-## Step 5 — Clone the Team Repository
+### Step 3 — Daily Team Workflow (Avoiding Conflicts)
 
-> **Important:** Always navigate to `~/SageMaker` before cloning so your files **persist** across notebook instance stops and restarts!
-
-```bash
-cd ~/SageMaker
-git clone git@github.com:ShubhamJain17r/Amazon-ML-Hackathon.git
-```
-
-Move into the repository folder:
-```bash
-cd Amazon-ML-Hackathon
-```
-
-Verify repository status:
-```bash
-git status
-```
-Output should be:
-```text
-On branch main
-Your branch is up to date with 'origin/main'.
-
-nothing to commit, working tree clean
-```
-
----
-
-## Step 6 — Daily Team Workflow (Avoiding Conflicts)
-
-1. **Before you begin work each day, always pull the latest updates:**
+1. **Before beginning work each day, always pull latest updates:**
 ```bash
 git pull origin main
 ```
@@ -122,4 +69,5 @@ git commit -m "feat: added eda and candidate generation tests"
 git push origin main
 ```
 
-*(Large files like `.tsv` and `.parquet` are automatically ignored by `.gitignore` — always keep data stored in S3!)*
+> [!CAUTION]
+> Large files like `.tsv` and `.parquet` are automatically ignored by `.gitignore`. **Always store and retrieve data from our central AWS S3 bucket!**

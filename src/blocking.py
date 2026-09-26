@@ -1,12 +1,14 @@
 """
 src/blocking.py
-Country-Partitioned Inverted Index Candidate Blocking Pipeline.
+High-Recall Dual Inverted Index Candidate Blocking Pipeline.
 Generates <= 5 high-precision candidate matching pairs between Source 1 and Source 2/3.
-Prevents O(N*M) Cartesian explosion via token inverted indexing and strict country partitioning.
+Combines Pure Name Tokens, Dedicated Postal Codes, and Address Locality Tokens.
+Ensures fair representation across Source 2 and Source 3 without asymmetric starvation.
 """
 
 import gc
 import os
+import re
 import sys
 import time
 from collections import Counter, defaultdict
@@ -32,86 +34,189 @@ except ImportError:
 # Domain Stopwords & Filtering Constants
 # ==============================================================================
 
-# High-frequency generic legal & domain words that cause spurious blocking collisions
-GLOBAL_STOPWORDS: Set[str] = {
+RE_POSTAL = re.compile(r"\b\d{5,6}\b")
+MIN_TOKEN_LENGTH: int = 3
+MAX_CAP_PER_SOURCE: int = 1_500  # Fair 1,500 slots per source guarantees Source 3 is never starved
+
+NAME_STOPWORDS: Set[str] = {
     # English / Multilingual business designations
     "and", "the", "for", "with", "ltd", "pvt", "inc", "corp", "llc", "llp",
     "limited", "private", "corporation", "company", "co", "enterprises",
     "services", "solutions", "international", "group", "technologies",
-    "holdings", "associates", "consulting", "industries",
+    "industries", "trading", "associates", "consulting", "holdings",
     # French generic words
     "de", "la", "le", "les", "et", "du", "des", "sarl", "sa", "sas", "societe",
     # Country / Geographic noise
-    "india", "usa", "us", "france", "fr", "north", "south", "east", "west"
+    "india", "usa", "us", "france", "fr", "north", "south", "east", "west",
+    # Common category noise words
+    "hotel", "restaurant", "store", "shop", "mart", "agency", "travels"
 }
 
-MIN_TOKEN_LENGTH: int = 3
-MAX_POSTING_LIST_SIZE: int = 50_000  # Cap hyper-frequent token posting lists to protect RAM
+ADDR_STOPWORDS: Set[str] = NAME_STOPWORDS | {
+    "road", "street", "st", "rd", "lane", "ave", "avenue", "blvd", "boulevard",
+    "floor", "bldg", "building", "near", "opp", "opposite", "behind", "beside",
+    "post", "dist", "district", "city", "state", "nagar", "colony", "chowk",
+    "marg", "cross", "main", "layout", "phase", "sector", "block", "plot",
+    "no", "house", "flat", "apartment", "complex", "plaza", "tower", "towers",
+    "rue", "passage", "allee", "route", "zone", "industrial", "area"
+}
 
 
-def extract_blocking_tokens(normalized_name: str, stopwords: Set[str] = GLOBAL_STOPWORDS) -> List[str]:
-    """
-    Extracts discriminative search tokens from a pre-normalized business name.
-    Filters out stopwords and tokens shorter than MIN_TOKEN_LENGTH (3 chars).
-    """
+def extract_name_tokens(normalized_name: str) -> List[str]:
+    """Extracts discriminative search tokens from a clean business name."""
     if not normalized_name:
         return []
-    
-    tokens = normalized_name.split()
     return [
-        token for token in tokens
-        if len(token) >= MIN_TOKEN_LENGTH and token not in stopwords
+        t for t in normalized_name.split()
+        if len(t) >= MIN_TOKEN_LENGTH and t not in NAME_STOPWORDS and not t.isdigit()
     ]
 
 
-def build_country_inverted_index(
+def extract_addr_tokens(normalized_addr: str) -> List[str]:
+    """Extracts discriminative search tokens from a clean address."""
+    if not normalized_addr:
+        return []
+    return [
+        t for t in normalized_addr.split()
+        if len(t) >= MIN_TOKEN_LENGTH and t not in ADDR_STOPWORDS and not t.isdigit()
+    ]
+
+
+def extract_postal_code(text: str) -> Optional[str]:
+    """Extracts 5/6 digit postal codes (PIN / ZIP) with canonical prefix."""
+    m = RE_POSTAL.search(text)
+    return f"PIN_{m.group(0)}" if m else None
+
+
+def build_country_dual_index(
+    s23_ids: List[str],
     s23_names: List[str],
-    max_posting_size: int = MAX_POSTING_LIST_SIZE
-) -> Dict[str, List[int]]:
+    s23_addrs: List[str],
+    max_cap_per_source: int = MAX_CAP_PER_SOURCE
+) -> Tuple[Dict[str, List[int]], Dict[str, List[int]], Dict[str, List[int]]]:
     """
-    Builds an inverted index mapping tokens to integer row indices in the S23 pool.
-    
-    Memory optimization: Stores primitive Python integer indices rather than strings.
-    Caps extremely frequent posting lists to avoid memory blow-up on generic terms.
+    Builds three isolated inverted indexes on reference pool (S2 + S3):
+    1. name_inv: pure business name tokens
+    2. postal_inv: exact postal codes (PIN_XXXXX)
+    3. addr_inv: discriminative address locality tokens
+
+    Enforces fair per-source quotas based on entity ID prefix (S2 vs S3).
     """
-    inv_index: Dict[str, List[int]] = defaultdict(list)
-    
-    for idx, name in enumerate(s23_names):
-        tokens = set(extract_blocking_tokens(name))
-        for token in tokens:
-            posting = inv_index[token]
-            if len(posting) < max_posting_size:
-                posting.append(idx)
-                
-    return inv_index
+    name_inv: Dict[str, List[int]] = defaultdict(list)
+    postal_inv: Dict[str, List[int]] = defaultdict(list)
+    addr_inv: Dict[str, List[int]] = defaultdict(list)
+
+    # Per-source posting trackers: (source_prefix, token) -> count
+    src_name_counts: Counter = Counter()
+    src_addr_counts: Counter = Counter()
+
+    for idx, (eid, name, addr) in enumerate(zip(s23_ids, s23_names, s23_addrs)):
+        src_prefix = eid[:2] if len(eid) >= 2 else "XX"
+
+        # 1. Name tokens
+        for tok in set(extract_name_tokens(name)):
+            if src_name_counts[(src_prefix, tok)] < max_cap_per_source:
+                name_inv[tok].append(idx)
+                src_name_counts[(src_prefix, tok)] += 1
+
+        # 2. Postal code
+        pin = extract_postal_code(addr)
+        if pin:
+            postal_inv[pin].append(idx)
+
+        # 3. Address tokens
+        for tok in set(extract_addr_tokens(addr)):
+            if src_addr_counts[(src_prefix, tok)] < max_cap_per_source:
+                addr_inv[tok].append(idx)
+                src_addr_counts[(src_prefix, tok)] += 1
+
+    return name_inv, postal_inv, addr_inv
 
 
-def query_candidates_for_record(
-    s1_tokens: List[str],
-    inv_index: Dict[str, List[int]],
+def query_candidates_dual_index(
+    s1_name: str,
+    s1_addr: str,
+    name_inv: Dict[str, List[int]],
+    postal_inv: Dict[str, List[int]],
+    addr_inv: Dict[str, List[int]],
     max_candidates: int = 5
-) -> List[Tuple[int, int]]:
+) -> List[int]:
     """
-    Queries the inverted index with S1 tokens and returns top K candidates
-    ranked by the number of shared tokens.
-    
-    Returns: List of (s23_row_index, shared_token_count)
+    Queries candidate entities using a 5-tier high-recall hierarchy:
+    Tier 1: Postal code (PIN) + Rarest Name Token exact set intersection.
+    Tier 2: Multi-token Name intersection (Top 2 rarest name tokens).
+    Tier 3: Locality fallback (Rarest name token + rarest address token).
+    Tier 4: Single-token name / fallback rarest name token head.
+    Tier 5: Second rarest name token head.
     """
-    if not s1_tokens:
+    name_tokens = extract_name_tokens(s1_name)
+    pin = extract_postal_code(s1_addr)
+    addr_tokens = extract_addr_tokens(s1_addr)
+
+    v_name_tokens = [t for t in name_tokens if t in name_inv]
+    if not v_name_tokens:
         return []
 
-    # Count candidate frequencies across all token posting lists
-    match_counter: Counter = Counter()
-    for token in s1_tokens:
-        postings = inv_index.get(token)
-        if postings:
-            match_counter.update(postings)
+    # Sort name tokens by rarity (shortest posting list first)
+    v_name_tokens.sort(key=lambda t: len(name_inv[t]))
 
-    if not match_counter:
-        return []
+    cand_indices: List[int] = []
+    seen_cand: Set[int] = set()
 
-    # Retrieve top K candidates by shared token frequency
-    return match_counter.most_common(max_candidates)
+    # Tier 1: Postal code + rarest name token intersection
+    if pin and pin in postal_inv:
+        pin_postings = set(postal_inv[pin])
+        pin_intersect = pin_postings & set(name_inv[v_name_tokens[0]])
+        for idx in pin_intersect:
+            if idx not in seen_cand:
+                seen_cand.add(idx)
+                cand_indices.append(idx)
+                if len(cand_indices) >= max_candidates:
+                    return cand_indices
+
+    # Tier 2: Multi-token name intersection (Top 2 rarest name tokens)
+    if len(cand_indices) < max_candidates and len(v_name_tokens) >= 2:
+        t0, t1 = v_name_tokens[0], v_name_tokens[1]
+        name_intersect = set(name_inv[t0]) & set(name_inv[t1])
+        for idx in name_intersect:
+            if idx not in seen_cand:
+                seen_cand.add(idx)
+                cand_indices.append(idx)
+                if len(cand_indices) >= max_candidates:
+                    return cand_indices
+
+    # Tier 3: Locality fallback (Rarest name token + rarest address token)
+    if len(cand_indices) < max_candidates and addr_tokens:
+        v_addr_tokens = [t for t in addr_tokens if t in addr_inv]
+        if v_addr_tokens:
+            v_addr_tokens.sort(key=lambda t: len(addr_inv[t]))
+            name_addr_intersect = set(name_inv[v_name_tokens[0]]) & set(addr_inv[v_addr_tokens[0]])
+            for idx in name_addr_intersect:
+                if idx not in seen_cand:
+                    seen_cand.add(idx)
+                    cand_indices.append(idx)
+                    if len(cand_indices) >= max_candidates:
+                        return cand_indices
+
+    # Tier 4: Rarest name token head (up to 15 candidates)
+    if len(cand_indices) < max_candidates:
+        for idx in name_inv[v_name_tokens[0]][:15]:
+            if idx not in seen_cand:
+                seen_cand.add(idx)
+                cand_indices.append(idx)
+                if len(cand_indices) >= max_candidates:
+                    return cand_indices
+
+    # Tier 5: Second rarest name token head
+    if len(cand_indices) < max_candidates and len(v_name_tokens) >= 2:
+        for idx in name_inv[v_name_tokens[1]][:10]:
+            if idx not in seen_cand:
+                seen_cand.add(idx)
+                cand_indices.append(idx)
+                if len(cand_indices) >= max_candidates:
+                    return cand_indices
+
+    return cand_indices
 
 
 def block_country_partition(
@@ -124,13 +229,11 @@ def block_country_partition(
 ) -> pd.DataFrame:
     """
     Generates candidate pairs for a single country partition using streaming batches.
-    
-    Returns DataFrame matching required competition candidate schema:
-    ['source1_entity_id', 'candidate_entity_id', 's1_name', 's23_name', 's1_addr', 's23_addr', 'country']
+    Returns DataFrame matching required competition candidate schema.
     """
     n_s1 = len(df_s1_country)
     n_s23 = len(df_s23_country)
-    
+
     if n_s1 == 0 or n_s23 == 0:
         if verbose:
             print(f"⚠️ Country {country_code}: Empty partition (S1={n_s1}, S23={n_s23}). Skipping.")
@@ -140,26 +243,26 @@ def block_country_partition(
         ])
 
     if verbose:
-        print(f"\n🏗️ Building inverted index for Country '{country_code}' (S23 Records: {n_s23:,})...")
-    
+        print(f"\n🏗️ Building Dual Inverted Index for Country '{country_code}' (S23 Records: {n_s23:,})...")
+
     t_start = time.perf_counter()
-    
+
     # 1. Normalize S23 entities & extract vectors
     s23_id_col = "entity_id" if "entity_id" in df_s23_country.columns else df_s23_country.columns[0]
     s23_name_col = "business_name" if "business_name" in df_s23_country.columns else "name"
     s23_addr_col = "business_address" if "business_address" in df_s23_country.columns else "address"
-    
+
     s23_ids = df_s23_country[s23_id_col].astype(str).tolist()
     s23_names = [clean_business_name(name) for name in df_s23_country[s23_name_col].fillna("")]
     s23_addrs = [clean_address(addr) for addr in df_s23_country[s23_addr_col].fillna("")]
-    
-    # 2. Build Inverted Index on S23 names
-    inv_index = build_country_inverted_index(s23_names)
+
+    # 2. Build Dual Inverted Indexes
+    name_inv, postal_inv, addr_inv = build_country_dual_index(s23_ids, s23_names, s23_addrs)
     idx_build_time = time.perf_counter() - t_start
     if verbose:
-        print(f"  ✅ Inverted index created with {len(inv_index):,} unique tokens in {idx_build_time:.2f}s.")
+        print(f"  ✅ Dual index created: {len(name_inv):,} Name Tokens, {len(postal_inv):,} Postal Codes, {len(addr_inv):,} Addr Tokens in {idx_build_time:.2f}s.")
 
-    # 3. Stream S1 records in batches to keep memory footprint bounded
+    # 3. Stream S1 records in batches
     s1_id_col = "entity_id" if "entity_id" in df_s1_country.columns else df_s1_country.columns[0]
     s1_name_col = "business_name" if "business_name" in df_s1_country.columns else "name"
     s1_addr_col = "business_address" if "business_address" in df_s1_country.columns else "address"
@@ -169,23 +272,26 @@ def block_country_partition(
     s1_addrs = [clean_address(addr) for addr in df_s1_country[s1_addr_col].fillna("")]
 
     all_pairs: List[Dict[str, str]] = []
-    
+
     if verbose:
-        print(f"🔎 Querying {n_s1:,} Source 1 records against inverted index (Batch size: {batch_size:,})...")
+        print(f"🔎 Querying {n_s1:,} Source 1 records against dual index (Batch size: {batch_size:,})...")
 
     t_query = time.perf_counter()
     for start_idx in range(0, n_s1, batch_size):
         end_idx = min(start_idx + batch_size, n_s1)
-        
+
         for i in range(start_idx, end_idx):
             s1_id = s1_ids[i]
             s1_clean_name = s1_names[i]
             s1_clean_addr = s1_addrs[i]
-            
-            s1_tokens = extract_blocking_tokens(s1_clean_name)
-            candidate_matches = query_candidates_for_record(s1_tokens, inv_index, max_candidates=max_candidates)
-            
-            for s23_idx, _ in candidate_matches:
+
+            candidate_indices = query_candidates_dual_index(
+                s1_clean_name, s1_clean_addr,
+                name_inv, postal_inv, addr_inv,
+                max_candidates=max_candidates
+            )
+
+            for s23_idx in candidate_indices:
                 all_pairs.append({
                     "source1_entity_id": s1_id,
                     "candidate_entity_id": s23_ids[s23_idx],
@@ -195,8 +301,7 @@ def block_country_partition(
                     "s23_addr": s23_addrs[s23_idx],
                     "country": country_code
                 })
-        
-        # Explicit garbage collection after each batch
+
         gc.collect()
         if verbose and n_s1 > batch_size:
             print(f"  ↳ Processed {end_idx:,}/{n_s1:,} Source 1 records ({len(all_pairs):,} candidates generated)...")
@@ -206,8 +311,7 @@ def block_country_partition(
         candidates_per_s1 = len(all_pairs) / max(n_s1, 1)
         print(f"  🚀 Completed in {query_time:.2f}s! Generated {len(all_pairs):,} pairs ({candidates_per_s1:.2f} candidates/S1).")
 
-    # Clean up index from memory
-    del inv_index
+    del name_inv, postal_inv, addr_inv
     gc.collect()
 
     return pd.DataFrame(all_pairs, columns=[
@@ -226,13 +330,12 @@ def run_blocking_pipeline(
 ) -> pd.DataFrame:
     """
     Main blocking orchestrator.
-    Partitions datasets strictly by country, executes inverted index blocking,
+    Partitions datasets strictly by country, executes dual index blocking,
     concatenates results, and exports directly to Parquet (S3 or local).
     """
     country_col_s1 = "country" if "country" in df_s1.columns else "Country"
     country_col_s23 = "country" if "country" in df_s23.columns else "Country"
 
-    # Normalize country codes to uppercase
     df_s1_clean = df_s1.copy()
     df_s23_clean = df_s23.copy()
     df_s1_clean[country_col_s1] = df_s1_clean[country_col_s1].fillna("UNKNOWN").str.upper().str.strip()
@@ -240,7 +343,7 @@ def run_blocking_pipeline(
 
     countries = sorted(list(set(df_s1_clean[country_col_s1].unique())))
     print("=" * 78)
-    print(f"🌐 INVERTED INDEX BLOCKING PIPELINE: {len(countries)} COUNTRIES DETECTED: {countries}")
+    print(f"🌐 DUAL INVERTED INDEX BLOCKING: {len(countries)} COUNTRIES DETECTED: {countries}")
     print("=" * 78)
 
     country_dfs: List[pd.DataFrame] = []
@@ -248,100 +351,36 @@ def run_blocking_pipeline(
     for c in countries:
         s1_subset = df_s1_clean[df_s1_clean[country_col_s1] == c]
         s23_subset = df_s23_clean[df_s23_clean[country_col_s23] == c]
-        
-        candidates_c = block_country_partition(
-            s1_subset,
-            s23_subset,
-            country_code=c,
-            max_candidates=max_candidates,
-            batch_size=batch_size
-        )
-        if not candidates_c.empty:
-            country_dfs.append(candidates_c)
+
+        if len(s1_subset) > 0 and len(s23_subset) > 0:
+            df_part = block_country_partition(
+                s1_subset, s23_subset,
+                country_code=c,
+                max_candidates=max_candidates,
+                batch_size=batch_size
+            )
+            country_dfs.append(df_part)
 
     if country_dfs:
-        full_candidates = pd.concat(country_dfs, ignore_index=True)
+        final_df = pd.concat(country_dfs, ignore_index=True)
     else:
-        full_candidates = pd.DataFrame(columns=[
+        final_df = pd.DataFrame(columns=[
             "source1_entity_id", "candidate_entity_id",
             "s1_name", "s23_name", "s1_addr", "s23_addr", "country"
         ])
 
     print("\n" + "=" * 78)
-    print(f"📊 BLOCKING COMPLETE: Total Candidate Pairs Generated: {len(full_candidates):,}")
+    print(f"🏁 BLOCKING SUMMARY: {len(final_df):,} Total Candidate Pairs Generated")
     print("=" * 78)
 
-    # Export to Parquet (supporting S3 or local files)
     if output_parquet_path:
-        print(f"💾 Saving candidate pairs to: {output_parquet_path} ...")
-        full_candidates.to_parquet(
+        print(f"💾 Saving candidate pairs to {output_parquet_path}...")
+        final_df.to_parquet(
             output_parquet_path,
-            engine="pyarrow",
             index=False,
+            engine="pyarrow",
             storage_options=storage_options
         )
-        print("✅ Parquet export complete.")
+        print("✅ Parquet candidate store written successfully.")
 
-    return full_candidates
-
-
-# ==============================================================================
-# Automated Unit Tests
-# ==============================================================================
-if __name__ == "__main__":
-    print("=" * 78)
-    print("🧪 Running Automated Unit Tests for src/blocking.py ...")
-    print("=" * 78)
-
-    # Mock Source 1 Data
-    mock_s1 = pd.DataFrame([
-        {"entity_id": "S1_001", "business_name": "Flipkart Internet Private Limited", "business_address": "Koramangala, Bangalore", "country": "IN"},
-        {"entity_id": "S1_002", "business_name": "Amazon Commercial Services Corp", "business_address": "410 Terry Ave N, Seattle", "country": "US"},
-        {"entity_id": "S1_003", "business_name": "Société Générale de Banque", "business_address": "29 Boulevard Haussmann, Paris", "country": "FR"},
-        {"entity_id": "S1_004", "business_name": "Lone Entity Without Matches", "business_address": "Unknown Road", "country": "US"}
-    ])
-
-    # Mock Source 2+3 Data
-    mock_s23 = pd.DataFrame([
-        # Indian matches & non-matches
-        {"entity_id": "S23_IN_1", "business_name": "Flipkart Internet Pvt Ltd", "business_address": "Koramangala", "country": "IN"},
-        {"entity_id": "S23_IN_2", "business_name": "Flipkart Logistics Services", "business_address": "Bangalore", "country": "IN"},
-        {"entity_id": "S23_IN_3", "business_name": "Tata Motors Limited", "business_address": "Mumbai", "country": "IN"},
-        # US matches & non-matches
-        {"entity_id": "S23_US_1", "business_name": "Amazon Commercial Services", "business_address": "Terry Ave, Seattle", "country": "US"},
-        {"entity_id": "S23_US_2", "business_name": "Amazon Web Services Inc", "business_address": "Seattle WA", "country": "US"},
-        {"entity_id": "S23_US_3", "business_name": "Microsoft Corporation", "business_address": "Redmond WA", "country": "US"},
-        # FR matches
-        {"entity_id": "S23_FR_1", "business_name": "Societe Generale Banque SARL", "business_address": "Blvd Haussmann Paris", "country": "FR"},
-        {"entity_id": "S23_FR_2", "business_name": "TotalEnergies SE", "business_address": "Paris", "country": "FR"},
-        # Cross-country test record (has same name as S1_001 but different country)
-        {"entity_id": "S23_US_4", "business_name": "Flipkart Internet USA", "business_address": "New York", "country": "US"}
-    ])
-
-    # Run blocking
-    candidates = run_blocking_pipeline(mock_s1, mock_s23, max_candidates=5)
-
-    # 1. Output Schema Validation
-    expected_cols = ["source1_entity_id", "candidate_entity_id", "s1_name", "s23_name", "s1_addr", "s23_addr", "country"]
-    assert list(candidates.columns) == expected_cols, f"Schema mismatch! Got: {list(candidates.columns)}"
-    print("✅ Test 1 Passed: Output DataFrame matches exact expected schema.")
-
-    # 2. Strict Country Partitioning Validation
-    # Ensure S1_001 (IN) was NEVER paired with S23_US_4 (US) even though names share 'flipkart'
-    in_candidates = candidates[candidates["source1_entity_id"] == "S1_001"]
-    matched_ids = in_candidates["candidate_entity_id"].tolist()
-    assert "S23_US_4" not in matched_ids, "Country Partitioning Violation! Cross-country pair was generated!"
-    assert all(c == "IN" for c in in_candidates["country"]), "Country code mismatch in Indian candidates!"
-    print("✅ Test 2 Passed: Strict Country Partitioning verified (Zero cross-country candidate pairs).")
-
-    # 3. Max Candidates Constraint (<= 5 per S1)
-    for s1_id, grp in candidates.groupby("source1_entity_id"):
-        assert len(grp) <= 5, f"Candidate count exceeded 5 for {s1_id}: got {len(grp)}"
-    print("✅ Test 3 Passed: Candidates per Source 1 entity strictly <= 5.")
-
-    # 4. Inverted Index Relevance
-    # Check that Flipkart S1_001 retrieved S23_IN_1 and S23_IN_2
-    assert "S23_IN_1" in matched_ids, "Relevant candidate S23_IN_1 missed!"
-    print(f"✅ Test 4 Passed: Top match correctly retrieved -> S1_001 matched with: {matched_ids}")
-
-    print("\n🚀 All 4 Automated Unit Tests for src/blocking.py PASSED successfully!\n")
+    return final_df

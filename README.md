@@ -12,7 +12,8 @@
 | **Run 3** | Multi-token intersection (Source 3 starved due to global posting cap) | ~0.35 | `0.253` | Superceded |
 | **Run 4** | Dual Inverted Index (fair S2/S3 quota), 9 features, unconstrained matches | ~0.42 | `0.409` | Superceded |
 | **Ablation Run** | Hard-truncated to 1 ID per entity (destroyed dual-catalog recall) | ~0.39 | `0.380` | Proved dual-source structure |
-| **Phase 2 (Latest)** | **14 Features + 799 Trees + Dual-Source Top-1 Policy (threshold = 0.60)** | **`0.8447`** | **`0.459`** | **Current Benchmark** 🚀 |
+| **Phase 2** | **14 Features + 799 Trees + Dual-Source Top-1 Policy (threshold = 0.60)** | **`0.8447`** | **`0.459`** | Superceded |
+| **Optuna Tuned (Latest)** | **14 Features + Optuna Tuned Hyperparameters (threshold = 0.66)** | **`0.8447`** | **`0.461`** | **Current Benchmark** 🚀 |
 
 ---
 

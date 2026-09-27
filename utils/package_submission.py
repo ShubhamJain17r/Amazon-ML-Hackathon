@@ -36,11 +36,18 @@ def package_submission(team_name: str, matching_path: str, candidate_path: str, 
     candidate_file = Path(candidate_path).resolve()
     doc_file = Path(doc_path).resolve()
 
+    # Smart path fallbacks
+    if not matching_file.exists() and (repo_root / "matching_results.tsv").exists():
+        matching_file = repo_root / "matching_results.tsv"
+    if not candidate_file.exists() and (repo_root / "candidate_pairs.tsv").exists():
+        candidate_file = repo_root / "candidate_pairs.tsv"
+
     if not matching_file.exists():
-        print(f"Error: Matching results file not found at {matching_file}")
+        print(f"Error: Matching results file not found at {matching_file} (or {repo_root / 'matching_results.tsv'})")
         sys.exit(1)
     if not candidate_file.exists():
-        print(f"Error: Candidate pairs file not found at {candidate_file}")
+        print(f"Error: Candidate pairs file not found at {candidate_file} (or {repo_root / 'candidate_pairs.tsv'})")
+        print("\nPlease download candidate_pairs.tsv from AWS S3, or place it under output/candidate_pairs.tsv")
         sys.exit(1)
     if not doc_file.exists():
         print(f"Error: Documentation file not found at {doc_file}")
@@ -53,10 +60,10 @@ def package_submission(team_name: str, matching_path: str, candidate_path: str, 
 
     with zipfile.ZipFile(zip_out_path, "w", zipfile.ZIP_DEFLATED) as zipf:
         # 1. Output files
-        print("  • Adding output/matching_results.tsv")
+        print(f"  • Adding output/matching_results.tsv (from {matching_file.name})")
         zipf.write(matching_file, arcname="output/matching_results.tsv")
 
-        print("  • Adding output/candidate_pairs.tsv")
+        print(f"  • Adding output/candidate_pairs.tsv (from {candidate_file.name})")
         zipf.write(candidate_file, arcname="output/candidate_pairs.tsv")
 
         # 2. Documentation template
@@ -78,12 +85,22 @@ def package_submission(team_name: str, matching_path: str, candidate_path: str, 
 
         # Add src files
         src_dir = repo_root / "src"
-        for py_file in src_dir.rglob("*.py"):
-            if "__pycache__" not in str(py_file):
-                rel_path = py_file.relative_to(src_dir)
-                arcname = f"{code_prefix}/src/{rel_path}"
-                print(f"  • Adding {arcname}")
-                zipf.write(py_file, arcname=arcname)
+        if src_dir.exists():
+            for py_file in src_dir.rglob("*.py"):
+                if "__pycache__" not in str(py_file):
+                    rel_path = py_file.relative_to(src_dir)
+                    arcname = f"{code_prefix}/src/{rel_path}"
+                    print(f"  • Adding {arcname}")
+                    zipf.write(py_file, arcname=arcname)
+
+        # Add notebooks
+        nb_dir = repo_root / "notebooks"
+        if nb_dir.exists():
+            for nb_file in nb_dir.glob("*.ipynb"):
+                if ".ipynb_checkpoints" not in str(nb_file):
+                    arcname = f"{code_prefix}/notebooks/{nb_file.name}"
+                    print(f"  • Adding {arcname}")
+                    zipf.write(nb_file, arcname=arcname)
 
     print(f"\n✅ Successfully generated: {zip_out_path} ({zip_out_path.stat().st_size / (1024*1024):.2f} MB)")
     print("Archive Contents:")
